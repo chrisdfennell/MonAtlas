@@ -491,6 +491,52 @@ namespace MonAtlas.ViewModels
             return $"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/{id}.png";
         }
 
+        private static readonly Dictionary<string, string> MegaStoneMap = new()
+{
+            // Kanto
+            { "venusaur-mega", "Venusaurite" },
+            { "charizard-mega-x", "Charizardite X" },
+            { "charizard-mega-y", "Charizardite Y" },
+            { "blastoise-mega", "Blastoisinite" },
+            { "alakazam-mega", "Alakazite" },
+            { "gengar-mega", "Gengarite" },
+            { "kangaskhan-mega", "Kangaskhanite" },
+            { "pinsir-mega", "Pinsirite" },
+            { "gyarados-mega", "Gyaradosite" },
+            { "aerodactyl-mega", "Aerodactylite" },
+
+            // Johto
+            { "ampharos-mega", "Ampharosite" },
+            { "scizor-mega", "Scizorite" },
+            { "heracross-mega", "Heracronite" },
+            { "houndoom-mega", "Houndoominite" },
+            { "tyranitar-mega", "Tyranitarite" },
+
+            // Hoenn
+            { "blaziken-mega", "Blazikenite" },
+            { "gardevoir-mega", "Gardevoirite" },
+            { "mawile-mega", "Mawilite" },
+            { "aggron-mega", "Aggronite" },
+            { "medicham-mega", "Medichamite" },
+            { "manectric-mega", "Manectite" },
+            { "banette-mega", "Banettite" },
+            { "absol-mega", "Absolite" },
+            { "latias-mega", "Latiasite" },
+            { "latios-mega", "Latiosite" },
+
+            // Sinnoh
+            { "garchomp-mega", "Garchompite" },
+            { "lucario-mega", "Lucarionite" },
+            { "abomasnow-mega", "Abomasite" },
+            { "gallade-mega", "Galladite" },
+
+            // Unova
+            { "audino-mega", "Audinite" },
+
+            // Kalos
+            { "diancie-mega", "Diancite" }
+        };
+
         // NOTE: use species URL (works for megas/forms too)
         // Call with: await BuildEvolutionStagesAsync(Selected?.Species?.Url);
         public async Task BuildEvolutionStagesAsync(string speciesUrl)
@@ -498,109 +544,108 @@ namespace MonAtlas.ViewModels
             EvolutionStages.Clear();
             if (string.IsNullOrWhiteSpace(speciesUrl)) return;
 
-            // 1) species -> evolution chain URL
-            var speciesLite = await _api.GetSpeciesLiteByUrlAsync(speciesUrl);
-            if (speciesLite?.EvolutionChain?.Url is null) return;
+            // 1) Species -> evolution chain URL
+            var species = await _api.GetSpeciesByUrlAsync(speciesUrl);
+            if (species?.EvolutionChain?.Url == null) return;
 
-            // 2) fetch chain
-            var chain = await _api.GetEvolutionChainByUrlAsync(speciesLite.EvolutionChain.Url);
-            if (chain?.Chain == null) return;
+            // 2) Download full chain
+            var chainRes = await _api.GetEvolutionChainByUrlAsync(species.EvolutionChain.Url);
+            if (chainRes?.Chain == null) return;
 
-            // 3) build stages
+            // 3) Build columns from root
             var stages = new List<EvoStageVM>();
-            BuildStagesRecursive(chain.Chain, stages);
+            BuildStagesRecursive(chainRes.Chain, stages);
 
-            // === Append Mega / G-Max forms as an extra stage, if present on final species ===
-            if (stages.Count > 0 && stages[stages.Count - 1].Forms.Count > 0)
+            // 4) Append Mega/G-Max column if varieties have them (and label properly)
+            try
             {
-                // The last “normal” species name (e.g., "charizard")
-                var lastBaseName = stages[stages.Count - 1].Forms[0].Name;
+                var specialForms = species.Varieties
+                    .Where(v => v?.Pokemon?.Name != null &&
+                                (v.Pokemon.Name.Contains("mega") || v.Pokemon.Name.Contains("gmax")))
+                    .ToList();
 
-                // Get that species (full) to read all varieties
-                var finalSpecies = await _api.GetSpeciesAsync(lastBaseName);
-                var varieties = finalSpecies?.Varieties;
-
-                if (varieties != null && varieties.Count > 0)
+                if (specialForms.Count > 0 && stages.Count > 0)
                 {
-                    var specialForms = varieties
-                        .Where(v => v.Pokemon?.Name != null &&
-                                    (v.Pokemon.Name.Contains("mega", StringComparison.OrdinalIgnoreCase) ||
-                                     v.Pokemon.Name.Contains("gmax", StringComparison.OrdinalIgnoreCase)))
-                        .ToList();
+                    var megaStage = new EvoStageVM();
 
-                    if (specialForms.Count > 0)
+                    foreach (var v in specialForms)
                     {
-                        // Decide connector label for the base->special stage
-                        bool hasMega = specialForms.Any(v => v.Pokemon.Name.IndexOf("mega", StringComparison.OrdinalIgnoreCase) >= 0);
-                        bool hasGmax = specialForms.Any(v => v.Pokemon.Name.IndexOf("gmax", StringComparison.OrdinalIgnoreCase) >= 0);
-                        var connectorLabel = hasMega && hasGmax ? "Mega / G-Max" : (hasMega ? "Mega" : "G-Max");
-
-                        // Put the connector text on the PREVIOUS (base) stage
-                        stages[stages.Count - 1].ConnectorText = connectorLabel;
-
-                        // Create the new stage with all special forms rendered in the same column
-                        var specialStage = new EvoStageVM { Forms = new List<EvoFormVM>(), ConnectorText = "" };
-
-                        foreach (var v in specialForms)
+                        var cid = IdFromUrl(v.Pokemon.Url);
+                        megaStage.Forms.Add(new EvoFormVM
                         {
-                            var mid = IdFromUrl(v.Pokemon.Url); // 10034, 10035, etc.
-                            specialStage.Forms.Add(new EvoFormVM
-                            {
-                                Name = v.Pokemon.Name,
-                                SpriteUrl = SpriteUrlForId(mid)   // sprites exist for the >10000 IDs
-                            });
-                        }
+                            Name = v.Pokemon.Name,
+                            SpriteUrl = SpriteUrlForId(cid)
+                        });
 
-                        stages.Add(specialStage);
+                        var key = v.Pokemon.Name.ToLowerInvariant();
+                        if (MegaStoneMap.TryGetValue(key, out var stone))
+                            megaStage.ConnectorTexts.Add(stone);
+                        else
+                            megaStage.ConnectorTexts.Add(v.Pokemon.Name.Contains("gmax") ? "G-Max" : "Mega Stone");
                     }
+
+                    stages.Add(megaStage);
                 }
             }
+            catch
+            {
+                // varieties not available or different schema; skip megas
+            }
 
-            // 4) mark last
+            // 5) Flag last column
             for (int i = 0; i < stages.Count; i++)
                 stages[i].IsLast = (i == stages.Count - 1);
 
-            foreach (var s in stages)
-                EvolutionStages.Add(s);
+            EvolutionStages.Clear();
+            foreach (var s in stages) EvolutionStages.Add(s);
         }
 
-        private void BuildStagesRecursive(ChainLink link, List<EvoStageVM> stages)
+        // Recursively build columns. For branching nodes we:
+        // - Put all children in one next column (multiple Forms).
+        // - Compute a connector label for each child separately (ConnectorTexts aligns with Forms).
+        private void BuildStagesRecursive(ChainLink node, List<EvoStageVM> dst)
         {
-            // Add the current stage (once for the root, then only children are added as "next")
-            if (stages.Count == 0)
+            if (dst.Count == 0)
             {
-                var rootId = IdFromUrl(link.Species.Url);
-                stages.Add(new EvoStageVM
+                // Root column (single form)
+                var rootId = IdFromUrl(node.Species.Url);
+                dst.Add(new EvoStageVM
                 {
                     Forms = new List<EvoFormVM>
             {
-                new EvoFormVM { Name = link.Species.Name, SpriteUrl = SpriteUrlForId(rootId) }
-            },
-                    // ConnectorText for the root will be set from its first child below
-                    ConnectorText = ""
+                new EvoFormVM { Name = node.Species.Name, SpriteUrl = SpriteUrlForId(rootId) }
+            }
                 });
             }
 
-            if (link.EvolvesTo != null && link.EvolvesTo.Count > 0)
+            if (node.EvolvesTo == null || node.EvolvesTo.Count == 0)
+                return;
+
+            var next = new EvoStageVM();
+
+            // Each child becomes a form tile in the same next column.
+            // We also compute each child's connector label independently.
+            foreach (var child in node.EvolvesTo)
             {
-                // Connector text (Lv 16, stone, trade...) belongs to the PREVIOUS stage
-                var connectorForPrevious = BuildConnectorText(link.EvolvesTo[0].EvolutionDetails);
-                stages[stages.Count - 1].ConnectorText = connectorForPrevious;
-
-                // Next stage (can be branching -> multiple forms in same column)
-                var next = new EvoStageVM { Forms = new List<EvoFormVM>(), ConnectorText = "" };
-
-                foreach (var child in link.EvolvesTo)
+                var cid = IdFromUrl(child.Species.Url);
+                next.Forms.Add(new EvoFormVM
                 {
-                    var cid = IdFromUrl(child.Species.Url);
-                    next.Forms.Add(new EvoFormVM { Name = child.Species.Name, SpriteUrl = SpriteUrlForId(cid) });
-                }
+                    Name = child.Species.Name,
+                    SpriteUrl = SpriteUrlForId(cid)
+                });
 
-                stages.Add(next);
+                var label = (child.EvolutionDetails != null && child.EvolutionDetails.Count > 0)
+                    ? BuildConnectorText(child.EvolutionDetails)
+                    : "";
 
-                // Continue linearly down the first branch
-                BuildStagesRecursive(link.EvolvesTo[0], stages);
+                next.ConnectorTexts.Add(label);
             }
+
+            dst.Add(next);
+
+            // Continue down the first branch to keep the main line going.
+            // (If you ever want to render "true tree" depth, iterate all children here.)
+            BuildStagesRecursive(node.EvolvesTo[0], dst);
         }
 
         private static string Nice(string? raw)
