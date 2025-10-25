@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
@@ -8,7 +9,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using MonAtlas.Models;
 using MonAtlas.Services;
-using MonAtlas.Models;
 
 namespace MonAtlas.ViewModels
 {
@@ -16,17 +16,23 @@ namespace MonAtlas.ViewModels
     {
         private readonly PokeApiClient _api = new();
 
-        // Existing lists
+        // Results and UI data
         public ObservableCollection<PokemonListItem> Results { get; } = new();
         public ObservableCollection<CounterRow> Counters { get; } = new();
+
+        // Old simple chain of names (kept if you show it anywhere else)
         public ObservableCollection<string> EvolutionChain { get; } = new();
+
+        // New rich chain for Evolution tab
+        public ObservableCollection<EvoStageVM> EvolutionStages { get; } = new();
+
         public ObservableCollection<MultiTypeCounter> MultiTypeCounters { get; } = new();
         public ObservableCollection<PokemonListItem> Suggestions { get; } = new();
 
-        // NEW: Team slots (up to 6)
+        // Team (up to 6)
         public ObservableCollection<TeamSlot> Team { get; } = new();
 
-        // Autocomplete popup visibility
+        // Autocomplete popup
         private bool _isSuggestOpen;
         public bool IsSuggestOpen
         {
@@ -61,7 +67,7 @@ namespace MonAtlas.ViewModels
                 OnPropertyChanged();
                 UpdateCounters();
                 _ = UpdateMultiTypeCountersAsync();
-                InitBuilderFromSelected(); // NEW: seed builder
+                InitBuilderFromSelected();
             }
         }
 
@@ -199,6 +205,7 @@ namespace MonAtlas.ViewModels
                 Species = null;
                 Counters.Clear();
                 EvolutionChain.Clear();
+                EvolutionStages.Clear();
                 MultiTypeCounters.Clear();
                 Suggestions.Clear();
                 IsSuggestOpen = false;
@@ -293,6 +300,7 @@ namespace MonAtlas.ViewModels
                 else
                     Species = null;
 
+                // Old simple names list (kept if you show it anywhere)
                 EvolutionChain.Clear();
                 if (Species != null)
                 {
@@ -303,6 +311,10 @@ namespace MonAtlas.ViewModels
                     }
                     catch { }
                 }
+
+                // Build rich evolution stages for the Evolution tab
+                if (Selected != null)
+                    await BuildEvolutionStagesAsync(Selected.Id);
             }
             finally { IsBusy = false; }
         }
@@ -334,7 +346,7 @@ namespace MonAtlas.ViewModels
         }
 
         private static string Capitalize(string s) =>
-            string.IsNullOrWhiteSpace(s) ? s : char.ToUpper(s[0]) + s[1..];
+            string.IsNullOrWhiteSpace(s) ? s : char.ToUpper(s[0]) + s.Substring(1);
 
         private static int Clamp(int val, int min, int max) => val < min ? min : (val > max ? max : val);
 
@@ -353,7 +365,6 @@ namespace MonAtlas.ViewModels
             foreach (var mv in Selected.Moves.Select(m => m.Move.Name).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(n => n))
                 AvailableMoves.Add(mv);
 
-            // Seed a sensible default
             Ability = AvailableAbilities.FirstOrDefault() ?? "";
             Nature = GuessNatureFromStats();
             Level = 50;
@@ -364,7 +375,6 @@ namespace MonAtlas.ViewModels
             var spa = Selected.Stats.FirstOrDefault(s => s.Stat.Name == "special-attack")?.BaseStat ?? 0;
             if (atk >= spa) EV_Atk = 252; else EV_SpA = 252;
 
-            // Moves: leave blank to let the user choose, or prefill first 4 alphabetically
             var first4 = AvailableMoves.Take(4).ToList();
             Move1 = first4.ElementAtOrDefault(0) ?? "";
             Move2 = first4.ElementAtOrDefault(1) ?? "";
@@ -424,14 +434,6 @@ namespace MonAtlas.ViewModels
 
         private static string BuildShowdownText(TeamSlot s)
         {
-            // Showdown export format
-            // Nick (Species) @ Item
-            // Ability: Foo
-            // Level: 50
-            // EVs: 252 Atk / 4 SpD / 252 Spe
-            // Adamant Nature
-            // - Move 1
-            // - Move 2
             var sb = new StringBuilder();
 
             var name = string.IsNullOrWhiteSpace(s.Nickname) ? Capitalize(s.Species) : s.Nickname;
@@ -456,7 +458,6 @@ namespace MonAtlas.ViewModels
 
             if (!string.IsNullOrWhiteSpace(s.Nature)) sb.AppendLine($"{s.Nature} Nature");
 
-            // Only include IVs line if any are not 31
             if (new[] { s.IV_HP, s.IV_Atk, s.IV_Def, s.IV_SpA, s.IV_SpD, s.IV_Spe }.Any(v => v != 31))
             {
                 var ivParts = new[]
@@ -476,16 +477,105 @@ namespace MonAtlas.ViewModels
 
             return sb.ToString().TrimEnd();
         }
-    }
 
-    public class CounterRow
+        // ===== Evolution tab support =====
+
+        private static int IdFromUrl(string url)
+        {
+            return int.TryParse(url.TrimEnd('/').Split('/').Last(), out var id) ? id : 0;
+        }
+
+        private static string SpriteUrlForId(int id)
+        {
+            return $"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/{id}.png";
+        }
+
+        private static int IdFromUrl(string url) =>
+            int.TryParse(url.TrimEnd('/').Split('/').Last(), out var id) ? id : 0;
+
+        private static string SpriteUrlForId(int id) =>
+            $"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/{id}.png";
+
+        public async Task BuildEvolutionStagesAsync(int pokemonId)
+        {
+            EvolutionStages.Clear();
+
+            // 1) species -> evolution chain URL
+            var speciesLite = await _api.GetSpeciesLiteByIdAsync(pokemonId);
+            if (speciesLite?.EvolutionChain?.Url is null) return;
+
+            // 2) download chain
+            var chain = await _api.GetEvolutionChainByUrlAsync(speciesLite.EvolutionChain.Url);
+            if (chain?.Chain == null) return;
+
+            // 3) flatten into stages
+            var stages = new List<EvoStageVM>();
+            BuildStagesRecursive(chain.Chain, stages);
+
+            // 4) mark last
+            for (int i = 0; i < stages.Count; i++)
+                stages[i].IsLast = (i == stages.Count - 1);
+
+            foreach (var s in stages)
+                EvolutionStages.Add(s);
+        }
+
+        private void BuildStagesRecursive(ChainLink link, List<EvoStageVM> stages)
+        {
+            // add root once
+            if (stages.Count == 0)
+            {
+                var rootId = IdFromUrl(link.Species.Url);
+                stages.Add(new EvoStageVM
+                {
+                    Forms = new List<EvoFormVM>
+            {
+                new EvoFormVM { Name = link.Species.Name, SpriteUrl = SpriteUrlForId(rootId) }
+            },
+                    ConnectorText = BuildConnectorText(link.EvolutionDetails)
+                });
+            }
+
+            // children -> next stage (branching allowed)
+            if (link.EvolvesTo != null && link.EvolvesTo.Count > 0)
+            {
+                var next = new EvoStageVM { Forms = new List<EvoFormVM>() };
+
+                foreach (var child in link.EvolvesTo)
+                {
+                    var cid = IdFromUrl(child.Species.Url);
+                    next.Forms.Add(new EvoFormVM { Name = child.Species.Name, SpriteUrl = SpriteUrlForId(cid) });
+                }
+
+                // summarize using the first child's details
+                next.ConnectorText = BuildConnectorText(link.EvolvesTo[0].EvolutionDetails);
+                stages.Add(next);
+
+                // continue down the first branch (simple linear render)
+                BuildStagesRecursive(link.EvolvesTo[0], stages);
+            }
+        }
+
+        private static string BuildConnectorText(IEnumerable<EvolutionDetail>? details)
+        {
+            if (details == null) return "";
+            foreach (var d in details)
+            {
+                if (d.MinLevel.HasValue) return "Lv " + d.MinLevel.Value;
+                if (!string.IsNullOrWhiteSpace(d.Item?.Name)) return d.Item!.Name.Replace('-', ' ');
+                if (!string.IsNullOrWhiteSpace(d.Trigger?.Name)) return d.Trigger!.Name.Replace('-', ' ');
+            }
+            return "";
+        }
+
+        public class CounterRow
     {
         public string AttackingType { get; set; } = "";
         public double Multiplier { get; set; }
         public string Label => $"{AttackingType.ToUpper()}  x{Multiplier:0.##}";
     }
 
-    // A simple container for one Showdown set
+    // One Showdown set
     public class TeamSlot
     {
         public string Species { get; set; } = "";
@@ -502,11 +592,5 @@ namespace MonAtlas.ViewModels
         public string Move2 { get; set; } = "";
         public string Move3 { get; set; } = "";
         public string Move4 { get; set; } = "";
-
-        // Used by the Evolution tab to display the horizontal chain
-        public ObservableCollection<EvoStageVM> EvolutionStages { get; } = new();
-
     }
-
-
 }
