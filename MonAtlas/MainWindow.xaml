@@ -1,0 +1,665 @@
+<Window x:Class="MonAtlas.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:MonAtlas.ViewModels"
+        xmlns:local="clr-namespace:MonAtlas"
+        xmlns:sys="clr-namespace:System;assembly=mscorlib"
+        mc:Ignorable="d"
+        Title="MonAtlas"
+        Height="900"
+        Width="1200"
+        Background="{StaticResource BgBrush}">
+
+    <!-- ================= RESOURCES ================= -->
+    <Window.Resources>
+        <local:BooleanToBusyTextConverter x:Key="BusyConv" />
+
+        <!-- Evolution visuals -->
+        <SolidColorBrush x:Key="EvoPanelBg" Color="#1C2236"/>
+        <SolidColorBrush x:Key="EvoPanelBorder" Color="#2B314B"/>
+        <SolidColorBrush x:Key="EvoArrowBg" Color="#2C3256"/>
+
+        <Style x:Key="EvoStageCard" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource EvoPanelBg}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource EvoPanelBorder}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="28"/>
+            <Setter Property="Padding" Value="16"/>
+            <Setter Property="Width" Value="280"/>
+            <Setter Property="Margin" Value="12,0"/>
+        </Style>
+
+        <Style x:Key="EvoSprite" TargetType="Image">
+            <Setter Property="Width" Value="96"/>
+            <Setter Property="Height" Value="96"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+        </Style>
+
+        <Style x:Key="EvoName" TargetType="TextBlock">
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,6,0,0"/>
+        </Style>
+
+        <!-- Arrow chip between stages -->
+        <Style x:Key="EvoConnectorChip" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource EvoArrowBg}"/>
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="Margin" Value="8,0"/>
+        </Style>
+
+        <!-- TabControl base styling -->
+        <Style TargetType="TabControl">
+            <Setter Property="Background" Value="{StaticResource BgBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BgBrush}"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Padding" Value="0"/>
+        </Style>
+
+        <!-- TabItem header template -->
+        <Style TargetType="TabItem">
+            <Setter Property="Background" Value="#1B1F33"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="10,6"/>
+            <Setter Property="Margin" Value="2"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="8,8,0,0"
+                                Padding="{TemplateBinding Padding}">
+                            <!-- show header text -->
+                            <ContentPresenter ContentSource="Header"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              RecognizesAccessKey="True"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#2C3256"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#233064"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Dark scroll viewers -->
+        <Style TargetType="ScrollViewer">
+            <Setter Property="Background" Value="{StaticResource BgBrush}"/>
+        </Style>
+
+        <!-- Card fallback -->
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="Padding" Value="12"/>
+            <Setter Property="Margin" Value="0"/>
+            <Setter Property="Background" Value="#111827"/>
+        </Style>
+
+        <!-- Static list of Natures for the builder -->
+        <x:Array x:Key="NatureArray" Type="{x:Type sys:String}">
+            <sys:String>Adamant</sys:String>
+            <sys:String>Bashful</sys:String>
+            <sys:String>Bold</sys:String>
+            <sys:String>Brave</sys:String>
+            <sys:String>Calm</sys:String>
+            <sys:String>Careful</sys:String>
+            <sys:String>Docile</sys:String>
+            <sys:String>Gentle</sys:String>
+            <sys:String>Hardy</sys:String>
+            <sys:String>Hasty</sys:String>
+            <sys:String>Impish</sys:String>
+            <sys:String>Jolly</sys:String>
+            <sys:String>Lax</sys:String>
+            <sys:String>Lonely</sys:String>
+            <sys:String>Mild</sys:String>
+            <sys:String>Modest</sys:String>
+            <sys:String>Naive</sys:String>
+            <sys:String>Naughty</sys:String>
+            <sys:String>Quiet</sys:String>
+            <sys:String>Quirky</sys:String>
+            <sys:String>Rash</sys:String>
+            <sys:String>Relaxed</sys:String>
+            <sys:String>Sassy</sys:String>
+            <sys:String>Serious</sys:String>
+            <sys:String>Timid</sys:String>
+        </x:Array>
+    </Window.Resources>
+
+    <!-- ================= DATA CONTEXT ================= -->
+    <Window.DataContext>
+        <vm:MainViewModel/>
+    </Window.DataContext>
+
+    <!-- ================= MAIN LAYOUT ================= -->
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Search Bar with autocomplete -->
+        <DockPanel Grid.Row="0" LastChildFill="False">
+            <TextBox x:Name="SearchBox"
+                     Width="420"
+                     Text="{Binding Query, UpdateSourceTrigger=PropertyChanged}">
+                <TextBox.InputBindings>
+                    <KeyBinding Key="Enter" Command="{Binding SearchCommand}" />
+                </TextBox.InputBindings>
+            </TextBox>
+
+            <Button Content="Search" Command="{Binding SearchCommand}" Margin="6,0,0,0"/>
+            <Button Content="Clear" Command="{Binding ClearCommand}" Margin="6,0,0,0"/>
+            <TextBlock Margin="12,0,0,0"
+                       VerticalAlignment="Center"
+                       Text="{Binding IsBusy, Converter={StaticResource BusyConv}}"/>
+
+            <!-- Autocomplete popup -->
+            <Popup PlacementTarget="{Binding ElementName=SearchBox}"
+                   Placement="Bottom"
+                   StaysOpen="False"
+                   AllowsTransparency="True"
+                   IsOpen="{Binding IsSuggestOpen}">
+                <Border Background="#1E2444" BorderBrush="#2C3256" BorderThickness="1" CornerRadius="8">
+                    <ListBox x:Name="SuggestList"
+                             Width="{Binding ElementName=SearchBox, Path=ActualWidth}"
+                             MaxHeight="260"
+                             ItemsSource="{Binding Suggestions}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <DockPanel Margin="6">
+                                    <Image Width="32" Height="32" Margin="0,0,8,0" Source="{Binding SpriteUrl}"/>
+                                    <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center"/>
+                                </DockPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Border>
+            </Popup>
+        </DockPanel>
+
+        <!-- Content -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="340"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Results List -->
+            <Border Style="{StaticResource Card}" Grid.Column="0" Margin="0,0,16,0">
+                <StackPanel>
+                    <TextBlock FontSize="18" FontWeight="Bold" Text="Results"/>
+                    <ListBox x:Name="ResultsList"
+                             ItemsSource="{Binding Results}"
+                             Background="{x:Null}"
+                             SelectionMode="Single"
+                             MouseDoubleClick="ResultsList_MouseDoubleClick"
+                             KeyDown="ResultsList_KeyDown"
+                             SelectionChanged="ResultsList_SelectionChanged">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                <Setter Property="Cursor" Value="Hand"/>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border Margin="4" Padding="8" Background="#1E2444" CornerRadius="8">
+                                    <DockPanel>
+                                        <Image Width="56" Height="56" Margin="0,0,8,0" Source="{Binding SpriteUrl}"/>
+                                        <StackPanel>
+                                            <TextBlock FontWeight="Bold" Text="{Binding DisplayName}"/>
+                                            <TextBlock Foreground="#9FB0FF" FontSize="12" Text="{Binding Url}"/>
+                                        </StackPanel>
+                                    </DockPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </StackPanel>
+            </Border>
+
+            <!-- Tabs wrapped in enhanced border -->
+            <Border Grid.Column="1" CornerRadius="10" Background="#0D1020" Padding="8">
+                <TabControl>
+                    <!-- Overview Tab -->
+                    <TabItem Header="Overview">
+                        <ScrollViewer Background="{StaticResource BgBrush}">
+                            <StackPanel>
+
+                                <!-- Header -->
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Image Width="96" Height="96" Margin="0,0,12,0"
+                                           Source="{Binding Selected.SpriteUrl}"/>
+                                    <StackPanel>
+                                        <TextBlock FontSize="28" FontWeight="Bold" Text="{Binding Selected.DisplayName}"/>
+                                        <TextBlock Margin="0,2,0,0"
+                                                   Text="{Binding Selected.Id, StringFormat=ID: {0}}"/>
+                                        <StackPanel Orientation="Horizontal">
+                                            <ItemsControl ItemsSource="{Binding Selected.Types}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Background="#2A315B" CornerRadius="8" Padding="6" Margin="4,6,4,6">
+                                                            <TextBlock Text="{Binding Type.Name}" FontWeight="Bold"/>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <!-- About / quick facts -->
+                                <TextBlock Margin="0,10,0,4" FontSize="18" FontWeight="Bold" Text="About"/>
+                                <TextBlock Text="{Binding FlavorText}"/>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- Measurements -->
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock FontWeight="Bold" Text="Measurements"/>
+                                        <TextBlock Text="{Binding Selected.Height, StringFormat=Height: {0} dm}"/>
+                                        <TextBlock Text="{Binding Selected.Weight, StringFormat=Weight: {0} hg}"/>
+                                        <TextBlock Text="{Binding Selected.BaseExperience, StringFormat=Base Exp: {0}}"/>
+                                    </StackPanel>
+
+                                    <!-- Training -->
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock FontWeight="Bold" Text="Training"/>
+                                        <TextBlock Text="{Binding GrowthRateName, StringFormat=Growth: {0}}"/>
+                                        <TextBlock Text="{Binding Species.CaptureRate, StringFormat=Capture Rate: {0}}"/>
+                                        <TextBlock Text="{Binding Species.BaseHappiness, StringFormat=Base Happiness: {0}}"/>
+                                    </StackPanel>
+
+                                    <!-- Breeding -->
+                                    <StackPanel Grid.Column="2">
+                                        <TextBlock FontWeight="Bold" Text="Breeding"/>
+                                        <TextBlock Text="{Binding GenderText, StringFormat=Gender: {0}}"/>
+                                        <TextBlock Text="{Binding EggGroupsText, StringFormat=Egg Groups: {0}}"/>
+                                        <TextBlock Text="{Binding HabitatName, StringFormat=Habitat: {0}}"/>
+                                    </StackPanel>
+                                </Grid>
+
+                                <!-- Abilities -->
+                                <TextBlock Margin="0,12,0,4" FontSize="18" FontWeight="Bold" Text="Abilities"/>
+                                <ItemsControl ItemsSource="{Binding Selected.Abilities}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Ability.Name}"/>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <!-- Forms & held items -->
+                                <TextBlock Margin="0,12,0,4" FontSize="18" FontWeight="Bold" Text="Forms / Held Items"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                    <TextBlock FontWeight="Bold" Text="Forms: "/>
+                                    <ItemsControl ItemsSource="{Binding Selected.Forms}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Margin="4,0" Text="{Binding Name}"/>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock FontWeight="Bold" Text="Held Items: "/>
+                                    <ItemsControl ItemsSource="{Binding Selected.HeldItems}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Margin="4,0" Text="{Binding Item.Name}"/>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+
+                                <!-- Base Stats -->
+                                <TextBlock Margin="0,12,0,4" FontSize="18" FontWeight="Bold" Text="Base Stats"/>
+                                <ItemsControl ItemsSource="{Binding Selected.Stats}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,3,0,3">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="160"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="60"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Stat.Name}" Grid.Column="0"/>
+                                                <ProgressBar Grid.Column="1" Minimum="0" Maximum="255" Height="16"
+                                                             Value="{Binding BaseStat}"/>
+                                                <TextBlock Text="{Binding BaseStat}" Grid.Column="2" HorizontalAlignment="Right"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                            </StackPanel>
+                        </ScrollViewer>
+                    </TabItem>
+
+                    <!-- Counters Tab -->
+                    <TabItem Header="Counters">
+                        <ScrollViewer Background="{StaticResource BgBrush}">
+                            <StackPanel>
+                                <TextBlock Margin="0,12,0,4" FontSize="18" FontWeight="Bold" Text="Counter Advisor (Types)"/>
+                                <Border Background="#1E2444" CornerRadius="10" Padding="10">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="200"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock FontWeight="Bold" Text="Attacking Type"/>
+                                        <TextBlock Grid.Column="1" Margin="12,0,12,0" FontWeight="Bold" Text="x Mult"/>
+                                    </Grid>
+                                </Border>
+                                <ItemsControl ItemsSource="{Binding Counters}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,6,0,6">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="200"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding AttackingType}" FontWeight="Bold"/>
+                                                <TextBlock Grid.Column="1" Margin="12,0,12,0"
+                                                           Text="{Binding Multiplier, StringFormat=x{0:0.##}}"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <TextBlock Margin="0,12,0,4" FontSize="18" FontWeight="Bold" Text="Multi-Type Counter Finder"/>
+                                <ItemsControl ItemsSource="{Binding MultiTypeCounters}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="#1E2444" CornerRadius="10" Padding="8" Margin="0,4,0,4">
+                                                <DockPanel>
+                                                    <Image Width="56" Height="56" Margin="0,0,8,0" Source="{Binding SpriteUrl}" />
+                                                    <StackPanel>
+                                                        <TextBlock FontWeight="Bold" Text="{Binding Name}"/>
+                                                        <TextBlock Text="{Binding TypesSummary, StringFormat=Types: {0}}"/>
+                                                        <TextBlock Text="{Binding MatchingSummary, StringFormat=Matches: {0}}"/>
+                                                    </StackPanel>
+                                                    <Border Background="#2A315B" CornerRadius="8" Padding="6" Margin="8,0,0,0" DockPanel.Dock="Right">
+                                                        <TextBlock FontWeight="Bold" Text="{Binding MatchingCount, StringFormat={}{0}x types}"/>
+                                                    </Border>
+                                                </DockPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </TabItem>
+
+                    <TabItem Header="Evolution">
+                        <ScrollViewer Background="{StaticResource BgBrush}" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                            <!-- Horizontal flow of stages -->
+                            <ItemsControl ItemsSource="{Binding EvolutionStages}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <!-- One stage + (optional) connector to the next -->
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <!-- Stage card -->
+                                            <Border Grid.Column="0" Style="{StaticResource EvoStageCard}">
+                                                <!-- If a stage has multiple forms (branching), stack them vertically -->
+                                                <ItemsControl ItemsSource="{Binding Forms}">
+                                                    <ItemsControl.ItemsPanel>
+                                                        <ItemsPanelTemplate>
+                                                            <StackPanel Orientation="Vertical"/>
+                                                        </ItemsPanelTemplate>
+                                                    </ItemsControl.ItemsPanel>
+
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Border Background="#1E2444" CornerRadius="20" Padding="12" Margin="0,8,0,8">
+                                                                <StackPanel>
+                                                                    <Image Source="{Binding SpriteUrl}" Style="{StaticResource EvoSprite}"/>
+                                                                    <TextBlock Text="{Binding Name}" Style="{StaticResource EvoName}"/>
+                                                                </StackPanel>
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </Border>
+
+                                            <StackPanel Grid.Column="1"
+                                                        Orientation="Horizontal"
+                                                        VerticalAlignment="Center"
+                                                        Margin="10,0,10,0">
+                                                <StackPanel.Style>
+                                                    <Style TargetType="StackPanel">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsLast}" Value="True">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </StackPanel.Style>
+
+                                                <!-- Arrow icon -->
+                                                <Path Data="M0,0 L10,5 L0,10 Z"
+                                                      Fill="White"
+                                                      Stretch="Uniform"
+                                                      Width="16" Height="16"
+                                                      Margin="10,0"/>
+
+                                                <!-- Condition chip -->
+                                                <Border Style="{StaticResource EvoConnectorChip}">
+                                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding ConnectorText}" Foreground="White" FontWeight="SemiBold"/>
+                                                    </StackPanel>
+                                                </Border>
+                                            </StackPanel>
+
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </TabItem>
+
+                    <!-- Moves Tab -->
+                    <TabItem Header="Moves">
+                        <ScrollViewer Background="{StaticResource BgBrush}">
+                            <StackPanel>
+                                <TextBlock Margin="0,12,0,6" FontSize="18" FontWeight="Bold" Text="Learnset (names)"/>
+                                <ListBox ItemsSource="{Binding Selected.Moves}">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Move.Name}" />
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </TabItem>
+
+                    <!-- Builder Tab -->
+                    <TabItem Header="Builder">
+                        <ScrollViewer Background="{StaticResource BgBrush}">
+                            <StackPanel>
+                                <TextBlock Margin="0,12,0,6" FontSize="18" FontWeight="Bold" Text="Team Builder (Showdown Export)"/>
+
+                                <!-- Quick fields row -->
+                                <Grid Margin="0,4,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="2*"/>
+                                        <ColumnDefinition Width="2*"/>
+                                        <ColumnDefinition Width="2*"/>
+                                        <ColumnDefinition Width="2*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock FontWeight="Bold" Text="Nickname"/>
+                                        <TextBox Text="{Binding Nickname}"/>
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock FontWeight="Bold" Text="Item"/>
+                                        <TextBox Text="{Binding Item}"/>
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Column="2">
+                                        <TextBlock FontWeight="Bold" Text="Ability"/>
+                                        <ComboBox ItemsSource="{Binding AvailableAbilities}" SelectedItem="{Binding Ability}" />
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Column="3">
+                                        <TextBlock FontWeight="Bold" Text="Nature"/>
+                                        <ComboBox ItemsSource="{StaticResource NatureArray}" SelectedItem="{Binding Nature}" />
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Column="4">
+                                        <TextBlock FontWeight="Bold" Text="Level"/>
+                                        <TextBox Text="{Binding Level}" />
+                                    </StackPanel>
+                                </Grid>
+
+                                <!-- EVs -->
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock FontWeight="Bold" Text="EV HP"/>
+                                        <TextBox Text="{Binding EV_HP}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock FontWeight="Bold" Text="EV Atk"/>
+                                        <TextBox Text="{Binding EV_Atk}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2">
+                                        <TextBlock FontWeight="Bold" Text="EV Def"/>
+                                        <TextBox Text="{Binding EV_Def}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="3">
+                                        <TextBlock FontWeight="Bold" Text="EV SpA"/>
+                                        <TextBox Text="{Binding EV_SpA}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="4">
+                                        <TextBlock FontWeight="Bold" Text="EV SpD"/>
+                                        <TextBox Text="{Binding EV_SpD}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="5">
+                                        <TextBlock FontWeight="Bold" Text="EV Spe"/>
+                                        <TextBox Text="{Binding EV_Spe}" />
+                                    </StackPanel>
+                                </Grid>
+
+                                <!-- IVs -->
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock FontWeight="Bold" Text="IV HP"/>
+                                        <TextBox Text="{Binding IV_HP}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock FontWeight="Bold" Text="IV Atk"/>
+                                        <TextBox Text="{Binding IV_Atk}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2">
+                                        <TextBlock FontWeight="Bold" Text="IV Def"/>
+                                        <TextBox Text="{Binding IV_Def}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="3">
+                                        <TextBlock FontWeight="Bold" Text="IV SpA"/>
+                                        <TextBox Text="{Binding IV_SpA}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="4">
+                                        <TextBlock FontWeight="Bold" Text="IV SpD"/>
+                                        <TextBox Text="{Binding IV_SpD}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="5">
+                                        <TextBlock FontWeight="Bold" Text="IV Spe"/>
+                                        <TextBox Text="{Binding IV_Spe}" />
+                                    </StackPanel>
+                                </Grid>
+
+                                <!-- Moves -->
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock FontWeight="Bold" Text="Move 1"/>
+                                        <ComboBox ItemsSource="{Binding AvailableMoves}" SelectedItem="{Binding Move1}" IsEditable="True"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock FontWeight="Bold" Text="Move 2"/>
+                                        <ComboBox ItemsSource="{Binding AvailableMoves}" SelectedItem="{Binding Move2}" IsEditable="True"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2">
+                                        <TextBlock FontWeight="Bold" Text="Move 3"/>
+                                        <ComboBox ItemsSource="{Binding AvailableMoves}" SelectedItem="{Binding Move3}" IsEditable="True"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="3">
+                                        <TextBlock FontWeight="Bold" Text="Move 4"/>
+                                        <ComboBox ItemsSource="{Binding AvailableMoves}" SelectedItem="{Binding Move4}" IsEditable="True"/>
+                                    </StackPanel>
+                                </Grid>
+
+                                <!-- Actions + preview -->
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <Button Content="Copy Current Set" Command="{Binding CopyCurrentShowdownCommand}" />
+                                    <Button Content="Add To Team" Margin="8,0,0,0" Command="{Binding AddCurrentToTeamCommand}" />
+                                    <Button Content="Copy Full Team" Margin="8,0,0,0" Command="{Binding CopyTeamShowdownCommand}" />
+                                    <Button Content="Remove Last Slot" Margin="8,0,0,0" Command="{Binding RemoveLastTeamSlotCommand}" />
+                                </StackPanel>
+
+                                <TextBox Text="{Binding ShowdownPreview, Mode=OneWay}"
+                                         IsReadOnly="True" AcceptsReturn="True" Height="140" />
+                            </StackPanel>
+                        </ScrollViewer>
+                    </TabItem>
+                </TabControl>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>
