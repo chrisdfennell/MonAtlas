@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -20,7 +20,7 @@ namespace MonAtlas.ViewModels
         public ObservableCollection<PokemonListItem> Results { get; } = new();
         public ObservableCollection<CounterRow> Counters { get; } = new();
 
-        // Old simple chain of names (kept if you show it anywhere else)
+        // Keep old simple chain of names if you still show it elsewhere
         public ObservableCollection<string> EvolutionChain { get; } = new();
 
         // New rich chain for Evolution tab
@@ -247,7 +247,7 @@ namespace MonAtlas.ViewModels
         private void OnPropertyChanged([CallerMemberName] string name = null) =>
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 
-        // Search once
+        // Search
         private async Task SearchAsync()
         {
             try
@@ -300,7 +300,6 @@ namespace MonAtlas.ViewModels
                 else
                     Species = null;
 
-                // Old simple names list (kept if you show it anywhere)
                 EvolutionChain.Clear();
                 if (Species != null)
                 {
@@ -312,9 +311,9 @@ namespace MonAtlas.ViewModels
                     catch { }
                 }
 
-                // Build rich evolution stages for the Evolution tab
-                if (Selected != null)
-                    await BuildEvolutionStagesAsync(Selected.Id);
+                // Build rich evolution stages for the Evolution tab using the SPECIES URL
+                if (!string.IsNullOrWhiteSpace(Selected?.Species?.Url))
+                    await BuildEvolutionStagesAsync(Selected.Species.Url);
             }
             finally { IsBusy = false; }
         }
@@ -478,7 +477,9 @@ namespace MonAtlas.ViewModels
             return sb.ToString().TrimEnd();
         }
 
-        // ===== Evolution tab support =====
+        // === Evolution tab support ===
+
+        // === Evolution tab support ===
 
         private static int IdFromUrl(string url)
         {
@@ -490,27 +491,70 @@ namespace MonAtlas.ViewModels
             return $"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/{id}.png";
         }
 
-        private static int IdFromUrl(string url) =>
-            int.TryParse(url.TrimEnd('/').Split('/').Last(), out var id) ? id : 0;
-
-        private static string SpriteUrlForId(int id) =>
-            $"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/{id}.png";
-
-        public async Task BuildEvolutionStagesAsync(int pokemonId)
+        // NOTE: use species URL (works for megas/forms too)
+        // Call with: await BuildEvolutionStagesAsync(Selected?.Species?.Url);
+        public async Task BuildEvolutionStagesAsync(string speciesUrl)
         {
             EvolutionStages.Clear();
+            if (string.IsNullOrWhiteSpace(speciesUrl)) return;
 
             // 1) species -> evolution chain URL
-            var speciesLite = await _api.GetSpeciesLiteByIdAsync(pokemonId);
+            var speciesLite = await _api.GetSpeciesLiteByUrlAsync(speciesUrl);
             if (speciesLite?.EvolutionChain?.Url is null) return;
 
-            // 2) download chain
+            // 2) fetch chain
             var chain = await _api.GetEvolutionChainByUrlAsync(speciesLite.EvolutionChain.Url);
             if (chain?.Chain == null) return;
 
-            // 3) flatten into stages
+            // 3) build stages
             var stages = new List<EvoStageVM>();
             BuildStagesRecursive(chain.Chain, stages);
+
+            // === Append Mega / G-Max forms as an extra stage, if present on final species ===
+            if (stages.Count > 0 && stages[stages.Count - 1].Forms.Count > 0)
+            {
+                // The last “normal” species name (e.g., "charizard")
+                var lastBaseName = stages[stages.Count - 1].Forms[0].Name;
+
+                // Get that species (full) to read all varieties
+                var finalSpecies = await _api.GetSpeciesAsync(lastBaseName);
+                var varieties = finalSpecies?.Varieties;
+
+                if (varieties != null && varieties.Count > 0)
+                {
+                    var specialForms = varieties
+                        .Where(v => v.Pokemon?.Name != null &&
+                                    (v.Pokemon.Name.Contains("mega", StringComparison.OrdinalIgnoreCase) ||
+                                     v.Pokemon.Name.Contains("gmax", StringComparison.OrdinalIgnoreCase)))
+                        .ToList();
+
+                    if (specialForms.Count > 0)
+                    {
+                        // Decide connector label for the base->special stage
+                        bool hasMega = specialForms.Any(v => v.Pokemon.Name.IndexOf("mega", StringComparison.OrdinalIgnoreCase) >= 0);
+                        bool hasGmax = specialForms.Any(v => v.Pokemon.Name.IndexOf("gmax", StringComparison.OrdinalIgnoreCase) >= 0);
+                        var connectorLabel = hasMega && hasGmax ? "Mega / G-Max" : (hasMega ? "Mega" : "G-Max");
+
+                        // Put the connector text on the PREVIOUS (base) stage
+                        stages[stages.Count - 1].ConnectorText = connectorLabel;
+
+                        // Create the new stage with all special forms rendered in the same column
+                        var specialStage = new EvoStageVM { Forms = new List<EvoFormVM>(), ConnectorText = "" };
+
+                        foreach (var v in specialForms)
+                        {
+                            var mid = IdFromUrl(v.Pokemon.Url); // 10034, 10035, etc.
+                            specialStage.Forms.Add(new EvoFormVM
+                            {
+                                Name = v.Pokemon.Name,
+                                SpriteUrl = SpriteUrlForId(mid)   // sprites exist for the >10000 IDs
+                            });
+                        }
+
+                        stages.Add(specialStage);
+                    }
+                }
+            }
 
             // 4) mark last
             for (int i = 0; i < stages.Count; i++)
@@ -522,7 +566,7 @@ namespace MonAtlas.ViewModels
 
         private void BuildStagesRecursive(ChainLink link, List<EvoStageVM> stages)
         {
-            // add root once
+            // Add the current stage (once for the root, then only children are added as "next")
             if (stages.Count == 0)
             {
                 var rootId = IdFromUrl(link.Species.Url);
@@ -532,14 +576,19 @@ namespace MonAtlas.ViewModels
             {
                 new EvoFormVM { Name = link.Species.Name, SpriteUrl = SpriteUrlForId(rootId) }
             },
-                    ConnectorText = BuildConnectorText(link.EvolutionDetails)
+                    // ConnectorText for the root will be set from its first child below
+                    ConnectorText = ""
                 });
             }
 
-            // children -> next stage (branching allowed)
             if (link.EvolvesTo != null && link.EvolvesTo.Count > 0)
             {
-                var next = new EvoStageVM { Forms = new List<EvoFormVM>() };
+                // Connector text (Lv 16, stone, trade...) belongs to the PREVIOUS stage
+                var connectorForPrevious = BuildConnectorText(link.EvolvesTo[0].EvolutionDetails);
+                stages[stages.Count - 1].ConnectorText = connectorForPrevious;
+
+                // Next stage (can be branching -> multiple forms in same column)
+                var next = new EvoStageVM { Forms = new List<EvoFormVM>(), ConnectorText = "" };
 
                 foreach (var child in link.EvolvesTo)
                 {
@@ -547,28 +596,114 @@ namespace MonAtlas.ViewModels
                     next.Forms.Add(new EvoFormVM { Name = child.Species.Name, SpriteUrl = SpriteUrlForId(cid) });
                 }
 
-                // summarize using the first child's details
-                next.ConnectorText = BuildConnectorText(link.EvolvesTo[0].EvolutionDetails);
                 stages.Add(next);
 
-                // continue down the first branch (simple linear render)
+                // Continue linearly down the first branch
                 BuildStagesRecursive(link.EvolvesTo[0], stages);
             }
+        }
+
+        private static string Nice(string? raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return "";
+            // "water-stone" -> "Water Stone"
+            var s = raw.Replace('-', ' ');
+            return char.ToUpper(s[0]) + s.Substring(1);
         }
 
         private static string BuildConnectorText(IEnumerable<EvolutionDetail>? details)
         {
             if (details == null) return "";
+
+            // Use the first detail (most evolutions have a single entry; if many exist, pick the one
+            // with the clearest signal: item > level > trade > trigger)
+            EvolutionDetail? best = null;
+            int bestScore = int.MinValue;
+
             foreach (var d in details)
             {
-                if (d.MinLevel.HasValue) return "Lv " + d.MinLevel.Value;
-                if (!string.IsNullOrWhiteSpace(d.Item?.Name)) return d.Item!.Name.Replace('-', ' ');
-                if (!string.IsNullOrWhiteSpace(d.Trigger?.Name)) return d.Trigger!.Name.Replace('-', ' ');
+                int score = 0;
+                if (!string.IsNullOrWhiteSpace(d.Item?.Name)) score += 100;      // prefer stones / use-item
+                if (d.MinLevel.HasValue) score += 80;
+                if (!string.IsNullOrWhiteSpace(d.TradeSpecies?.Name)) score += 60;
+                if (!string.IsNullOrWhiteSpace(d.Trigger?.Name)) score += 20;
+                if (!string.IsNullOrWhiteSpace(d.TimeOfDay)) score += 10;
+                if (!string.IsNullOrWhiteSpace(d.Location?.Name)) score += 10;
+                if (score > bestScore) { best = d; bestScore = score; }
             }
-            return "";
-        }
 
-        public class CounterRow
+            if (best == null) return "";
+
+            var parts = new List<string>();
+
+            // 1) Use-item (stones, etc.)
+            if (!string.IsNullOrWhiteSpace(best.Item?.Name))
+            {
+                parts.Add(Nice(best.Item!.Name)); // "Leaf Stone", "Water Stone", "Dawn Stone", etc.
+            }
+            // 2) Level
+            else if (best.MinLevel.HasValue)
+            {
+                parts.Add("Lv " + best.MinLevel.Value);
+            }
+            // 3) Trade variants
+            else if (!string.IsNullOrWhiteSpace(best.TradeSpecies?.Name))
+            {
+                parts.Add("Trade for " + Nice(best.TradeSpecies.Name));
+            }
+            else if (string.Equals(best.Trigger?.Name, "trade", StringComparison.OrdinalIgnoreCase))
+            {
+                parts.Add("Trade");
+            }
+            else if (!string.IsNullOrWhiteSpace(best.Trigger?.Name))
+            {
+                // fallback for other triggers (e.g., "level-up", "use-item")
+                parts.Add(Nice(best.Trigger!.Name));
+            }
+
+            // Contextual extras (time, location, known move type, happiness, etc.)
+            if (!string.IsNullOrWhiteSpace(best.TimeOfDay))
+                parts.Add("(" + Nice(best.TimeOfDay) + ")");
+
+            if (!string.IsNullOrWhiteSpace(best.Location?.Name))
+                parts.Add("@" + Nice(best.Location.Name));
+
+            if (!string.IsNullOrWhiteSpace(best.KnownMoveType?.Name))
+                parts.Add("with " + Nice(best.KnownMoveType.Name) + " move");
+
+            if (best.MinHappiness.HasValue)
+                parts.Add("Happiness ≥ " + best.MinHappiness.Value);
+
+            if (best.MinBeauty.HasValue)
+                parts.Add("Beauty ≥ " + best.MinBeauty.Value);
+
+            if (best.MinAffection.HasValue)
+                parts.Add("Affection ≥ " + best.MinAffection.Value);
+
+            if (best.NeedsOverworldRain == true)
+                parts.Add("while raining");
+
+            if (best.TurnUpsideDown == true)
+                parts.Add("hold console upside-down");
+
+            if (best.RelativePhysicalStats.HasValue)
+            {
+                // -1: Atk < Def, 0: Atk = Def, 1: Atk > Def
+                var rps = best.RelativePhysicalStats.Value;
+                parts.Add(rps switch
+                {
+                    -1 => "Atk < Def",
+                    0 => "Atk = Def",
+                    1 => "Atk > Def",
+                    _ => "stat check"
+                });
+            }
+
+            return string.Join(" ", parts.Where(p => !string.IsNullOrWhiteSpace(p)));
+        }
+    }
+
+    public class CounterRow
     {
         public string AttackingType { get; set; } = "";
         public double Multiplier { get; set; }

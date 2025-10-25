@@ -17,6 +17,9 @@ namespace MonAtlas.Models
         [JsonPropertyName("flavor_text_entries")] public List<FlavorTextEntry> FlavorTextEntries { get; set; } = new();
 
         [JsonPropertyName("evolution_chain")] public ApiResource EvolutionChain { get; set; } = new();
+
+        [JsonPropertyName("varieties")]
+        public List<SpeciesVarietyLite> Varieties { get; set; } = new();
     }
 
     public class FlavorTextEntry

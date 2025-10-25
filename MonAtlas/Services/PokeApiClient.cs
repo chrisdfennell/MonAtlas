@@ -16,12 +16,25 @@ namespace MonAtlas.Services
         private readonly JsonSerializerOptions _json = new(JsonSerializerDefaults.Web);
         private readonly Dictionary<string, object> _cache = new();
 
+
         public PokeApiClient(HttpClient http = null)
         {
             _http = http ?? new HttpClient();
             _http.DefaultRequestHeaders.UserAgent.ParseAdd("MonAtlas/1.0");
             _http.Timeout = TimeSpan.FromSeconds(15);
         }
+
+        // Lightweight wrappers so VM code can fetch by URL without exposing GetJsonAsync<T>.
+        public System.Threading.Tasks.Task<PokemonSpeciesLite?> GetSpeciesLiteByUrlAsync(string url)
+        {
+            return GetJsonAsync<PokemonSpeciesLite>(url);
+        }
+
+        public System.Threading.Tasks.Task<EvolutionChainResponse?> GetEvolutionChainByUrlAsync(string url)
+        {
+            return GetJsonAsync<EvolutionChainResponse>(url);
+        }
+
 
         private async Task<T> GetJsonAsync<T>(string url)
         {
