@@ -2,7 +2,7 @@ using System;
 using System.Globalization;
 using System.Windows.Data;
 
-namespace MonAtlas
+namespace MonAtlas.Converters
 {
     public class BooleanToBusyTextConverter : IValueConverter
     {

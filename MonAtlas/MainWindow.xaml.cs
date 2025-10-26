@@ -21,6 +21,15 @@ namespace MonAtlas
             SuggestList.SelectionChanged += SuggestList_SelectionChanged;
         }
 
+        // Called by Loaded="Window_Loaded" in XAML
+        private async void Window_Loaded(object sender, RoutedEventArgs e)
+        {
+            if (DataContext is MainViewModel vm)
+            {
+                await vm.InitializeAsync();   // ensures DexVersions, FilteredPokemon, etc. are populated
+            }
+        }
+
         private async void ResultsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (ResultsList.SelectedItem is PokemonListItem item && DataContext is MainViewModel vm)
@@ -53,6 +62,37 @@ namespace MonAtlas
                 vm.Query = item.DisplayName;   // show the chosen name in the search box
                 vm.IsSuggestOpen = false;      // hide popup
                 await vm.SelectByListItemAsync(item);
+            }
+        }
+
+        private async void PokedexList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (PokedexList.SelectedItem is MonAtlas.Models.PokemonListItem item &&
+                DataContext is MonAtlas.ViewModels.MainViewModel vm)
+            {
+                await vm.SelectByListItemAsync(item);
+                // Optional: keep selection visible but don’t re-trigger on focus changes
+                // PokedexList.UpdateLayout();
+            }
+        }
+
+        private async void PokedexList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if (PokedexList.SelectedItem is MonAtlas.Models.PokemonListItem item &&
+                DataContext is MonAtlas.ViewModels.MainViewModel vm)
+            {
+                await vm.SelectByListItemAsync(item);
+            }
+        }
+
+        private async void PokedexList_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter &&
+                PokedexList.SelectedItem is MonAtlas.Models.PokemonListItem item &&
+                DataContext is MonAtlas.ViewModels.MainViewModel vm)
+            {
+                await vm.SelectByListItemAsync(item);
+                e.Handled = true;
             }
         }
     }

@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Serialization;
 
@@ -12,7 +12,11 @@ namespace MonAtlas.Models
         public int Id => int.TryParse(Url.TrimEnd('/').Split('/').Last(), out var id) ? id : 0;
         public string DisplayName => string.IsNullOrEmpty(Name) ? "" : char.ToUpper(Name[0]) + Name[1..];
         public string SpriteUrl => $"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/{Id}.png";
+
+        // 🆕 Added for showing which Pokédex versions the Pokémon appears in (e.g. "Kanto • Johto • Hoenn")
+        public string DexSummary { get; set; } = "";
     }
+
 
     public class NamedApiResource
     {

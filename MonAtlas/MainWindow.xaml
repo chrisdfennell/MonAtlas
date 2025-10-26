@@ -1,4 +1,4 @@
-<Window x:Class="MonAtlas.MainWindow"
+﻿<Window x:Class="MonAtlas.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -14,13 +14,17 @@
 
     <!-- ================= RESOURCES ================= -->
     <Window.Resources>
-        <local:BooleanToBusyTextConverter x:Key="BusyConv" />
+
+        <!-- ===== THEME FALLBACKS (safe if your theme dictionary is missing) ===== -->
+        <SolidColorBrush x:Key="BgBrush" Color="#0D1020"/>
+        <SolidColorBrush x:Key="TextBrush" Color="#FFFFFFFF"/>
 
         <!-- Evolution visuals -->
         <SolidColorBrush x:Key="EvoPanelBg" Color="#1C2236"/>
         <SolidColorBrush x:Key="EvoPanelBorder" Color="#2B314B"/>
         <SolidColorBrush x:Key="EvoArrowBg" Color="#2C3256"/>
 
+        <!-- ===== Styles: Evolution Cards ===== -->
         <Style x:Key="EvoStageCard" TargetType="Border">
             <Setter Property="Background" Value="{StaticResource EvoPanelBg}"/>
             <Setter Property="BorderBrush" Value="{StaticResource EvoPanelBorder}"/>
@@ -76,7 +80,6 @@
                                 Background="{TemplateBinding Background}"
                                 CornerRadius="8,8,0,0"
                                 Padding="{TemplateBinding Padding}">
-                            <!-- show header text -->
                             <ContentPresenter ContentSource="Header"
                                               HorizontalAlignment="Center"
                                               VerticalAlignment="Center"
@@ -162,9 +165,20 @@
 
             <Button Content="Search" Command="{Binding SearchCommand}" Margin="6,0,0,0"/>
             <Button Content="Clear" Command="{Binding ClearCommand}" Margin="6,0,0,0"/>
-            <TextBlock Margin="12,0,0,0"
-                       VerticalAlignment="Center"
-                       Text="{Binding IsBusy, Converter={StaticResource BusyConv}}"/>
+
+            <TextBlock Margin="12,0,0,0" VerticalAlignment="Center">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Setter Property="Text" Value=""/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsBusy}" Value="True">
+                                <Setter Property="Text" Value="Searching..."/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+
 
             <!-- Autocomplete popup -->
             <Popup PlacementTarget="{Binding ElementName=SearchBox}"
@@ -188,14 +202,13 @@
                                            Margin="0,0,8,0"
                                            Source="{Binding SpriteUrl}" />
                                     <TextBlock Text="{Binding DisplayName}"
-                                   VerticalAlignment="Center" />
+                                               VerticalAlignment="Center" />
                                 </DockPanel>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
                 </Border>
             </Popup>
-
         </DockPanel>
 
         <!-- Content -->
@@ -216,7 +229,7 @@
                                Margin="0,0,0,8"
                                DockPanel.Dock="Top"/>
                     <ScrollViewer VerticalScrollBarVisibility="Auto"
-                      HorizontalScrollBarVisibility="Disabled">
+                                  HorizontalScrollBarVisibility="Disabled">
                         <ListBox x:Name="ResultsList"
                                  ItemsSource="{Binding Results}"
                                  Background="{x:Null}"
@@ -243,10 +256,10 @@
                                                    Source="{Binding SpriteUrl}"/>
                                             <StackPanel>
                                                 <TextBlock FontWeight="Bold"
-                                               Text="{Binding DisplayName}"/>
+                                                           Text="{Binding DisplayName}"/>
                                                 <TextBlock Foreground="#9FB0FF"
-                                               FontSize="12"
-                                               Text="{Binding Url}"/>
+                                                           FontSize="12"
+                                                           Text="{Binding Url}"/>
                                             </StackPanel>
                                         </DockPanel>
                                     </Border>
@@ -260,6 +273,75 @@
             <!-- Tabs wrapped in enhanced border -->
             <Border Grid.Column="1" CornerRadius="10" Background="#0D1020" Padding="8">
                 <TabControl>
+
+                    <!-- Pokédex Tab -->
+                    <TabItem Header="Pokédex">
+                        <DockPanel Background="{StaticResource BgBrush}">
+
+                            <!-- === Top Controls === -->
+                            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="8">
+
+                                <!-- WPF has no PlaceholderText; simple textbox -->
+                                <TextBox Width="220"
+                                         VerticalAlignment="Center"
+                                         Margin="6,0"
+                                         Padding="6"
+                                         Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                         Foreground="{StaticResource TextBrush}"
+                                         Background="#222641"
+                                         BorderBrush="#2C3256"/>
+
+                                <!-- Dex Version Dropdown -->
+                                <ComboBox Width="160"
+                                          Margin="6,0"
+                                          ItemsSource="{Binding DexVersions}"
+                                          SelectedItem="{Binding SelectedDexVersion, Mode=TwoWay}"
+                                          DisplayMemberPath="Name"
+                                          Foreground="{StaticResource TextBrush}"
+                                          Background="#232833"
+                                          BorderBrush="#3A4456"
+                                          ToolTip="Select Pokédex version"/>
+                            </StackPanel>
+
+                            <!-- === Pokédex Results === -->
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <ListBox x:Name="PokedexList"
+                                         ItemsSource="{Binding FilteredPokemon}"
+                                         Background="{x:Null}"
+                                         BorderThickness="0"
+                                         SelectionMode="Single"
+                                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                         ScrollViewer.CanContentScroll="True"
+                                         SelectionChanged="PokedexList_SelectionChanged"
+                                         MouseDoubleClick="PokedexList_MouseDoubleClick"
+                                         KeyDown="PokedexList_KeyDown">
+                                    <ListBox.ItemContainerStyle>
+                                        <Style TargetType="ListBoxItem">
+                                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                            <Setter Property="Cursor" Value="Hand"/>
+                                        </Style>
+                                    </ListBox.ItemContainerStyle>
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Margin="8,4"
+                                                    Padding="6"
+                                                    Background="#1E2444"
+                                                    CornerRadius="8">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Image Source="{Binding SpriteUrl}" Width="64" Height="64" Margin="6"/>
+                                                    <StackPanel Orientation="Vertical">
+                                                        <TextBlock Text="{Binding DisplayName}" FontWeight="Bold" FontSize="16"/>
+                                                        <TextBlock Text="{Binding DexSummary}" FontSize="12" Foreground="#CCCCCC"/>
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </ScrollViewer>
+                        </DockPanel>
+                    </TabItem>
+
                     <!-- Overview Tab -->
                     <TabItem Header="Overview">
                         <ScrollViewer VerticalScrollBarVisibility="Auto"
@@ -439,6 +521,7 @@
                         </ScrollViewer>
                     </TabItem>
 
+                    <!-- Evolution Tab -->
                     <TabItem Header="Evolution">
                         <ScrollViewer HorizontalScrollBarVisibility="Auto"
                                       VerticalScrollBarVisibility="Auto"
@@ -451,7 +534,7 @@
                                     </ItemsPanelTemplate>
                                 </ItemsControl.ItemsPanel>
 
-                                <!-- NEW: keep each item content-sized -->
+                                <!-- keep each item content-sized -->
                                 <ItemsControl.ItemContainerStyle>
                                     <Style TargetType="ContentPresenter">
                                         <Setter Property="VerticalAlignment" Value="Top"/>
@@ -492,9 +575,7 @@
                                                                 </StackPanel>
 
                                                                 <!-- Centered connector chip (one per row) -->
-                                                                <!-- Centered connector chip (one per row) -->
-                                                                <Border Grid.Column="2"
-                                                                        VerticalAlignment="Center">
+                                                                <Border Grid.Column="2" VerticalAlignment="Center">
                                                                     <Border.Style>
                                                                         <Style TargetType="Border" BasedOn="{StaticResource EvoConnectorChip}">
                                                                             <Setter Property="Visibility" Value="Visible" />
@@ -569,9 +650,9 @@
                                       Background="{StaticResource BgBrush}">
                             <StackPanel>
                                 <TextBlock Margin="0,12,0,6"
-                       FontSize="18"
-                       FontWeight="Bold"
-                       Text="Learnset (names)"/>
+                                           FontSize="18"
+                                           FontWeight="Bold"
+                                           Text="Learnset (names)"/>
 
                                 <!-- Two equal columns with vertical scrolling -->
                                 <ItemsControl ItemsSource="{Binding Selected.Moves}">
@@ -588,7 +669,7 @@
                                                     Padding="8"
                                                     Margin="6">
                                                 <TextBlock Text="{Binding Move.Name}"
-                                       TextTrimming="CharacterEllipsis"/>
+                                                           TextTrimming="CharacterEllipsis"/>
                                             </Border>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
@@ -609,7 +690,7 @@
                                            FontWeight="Bold"
                                            Text="Team Builder (Showdown Export)"/>
 
-                                <!-- PREVIEW ROW (moved inside the tab) -->
+                                <!-- PREVIEW ROW -->
                                 <StackPanel Orientation="Horizontal"
                                             Margin="0,6,0,12"
                                             VerticalAlignment="Center">
@@ -776,7 +857,7 @@
                                     <Button Content="Remove Last Slot" Margin="8,0,0,0" Command="{Binding RemoveLastTeamSlotCommand}" />
                                 </StackPanel>
 
-                                <!-- bigger export box (keep your size) -->
+                                <!-- Export box -->
                                 <TextBox Text="{Binding ShowdownPreview, Mode=OneWay}"
                                          IsReadOnly="True"
                                          AcceptsReturn="True"
@@ -784,6 +865,7 @@
                             </StackPanel>
                         </ScrollViewer>
                     </TabItem>
+
                 </TabControl>
             </Border>
         </Grid>

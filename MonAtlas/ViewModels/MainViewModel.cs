@@ -11,14 +11,34 @@ using System.Threading.Tasks;
 using MonAtlas.Services;
 using MonAtlas.Models;
 
-
 namespace MonAtlas.ViewModels
 {
     public class MainViewModel : INotifyPropertyChanged
     {
         private readonly PokeApiClient _api = new();
+        public string DexSummary { get; set; }
 
-        // Results and UI data
+        // ========= POKÉDEX BROWSER (new) =========
+        public ObservableCollection<DexVersion> DexVersions { get; } = new();
+        private DexVersion _selectedDexVersion;
+        public DexVersion SelectedDexVersion
+        {
+            get => _selectedDexVersion;
+            set { _selectedDexVersion = value; OnPropertyChanged(); ApplyFilters(); }
+        }
+
+        private string _searchText = string.Empty;
+        public string SearchText
+        {
+            get => _searchText;
+            set { _searchText = value ?? string.Empty; OnPropertyChanged(); ApplyFilters(); }
+        }
+
+        // Full list cached once; filtered list bound to the UI
+        private PokemonListItem[] _allPokemon = Array.Empty<PokemonListItem>();
+        public ObservableCollection<PokemonListItem> FilteredPokemon { get; } = new();
+
+        // ========= Results / Details / Tabs (existing) =========
         public ObservableCollection<PokemonListItem> Results { get; } = new();
         public ObservableCollection<CounterRow> Counters { get; } = new();
 
@@ -42,7 +62,7 @@ namespace MonAtlas.ViewModels
             set { if (_isSuggestOpen == value) return; _isSuggestOpen = value; OnPropertyChanged(); }
         }
 
-        // Search query
+        // Search query (header search)
         private string _query = "";
         public string Query
         {
@@ -70,6 +90,7 @@ namespace MonAtlas.ViewModels
                 UpdateCounters();
                 _ = UpdateMultiTypeCountersAsync();
                 InitBuilderFromSelected();
+                OnPropertyChanged(nameof(BuilderSpriteUrl));
             }
         }
 
@@ -89,7 +110,7 @@ namespace MonAtlas.ViewModels
             }
         }
 
-        // Busy flag
+        // Busy flag (used by header text and command CanExecute)
         private bool _isBusy;
         public bool IsBusy
         {
@@ -99,11 +120,24 @@ namespace MonAtlas.ViewModels
                 if (_isBusy == value) return;
                 _isBusy = value;
                 OnPropertyChanged();
-                SearchCommand.RaiseCanExecuteChanged();
+                SearchCommand?.RaiseCanExecuteChanged();
             }
         }
 
-        // Species helpers
+        // Status text (for long loading messages)
+        private string _statusText = "";
+        public string StatusText
+        {
+            get => _statusText;
+            set
+            {
+                if (_statusText == value) return;
+                _statusText = value;
+                OnPropertyChanged();
+            }
+        }
+
+        // ===== Species helpers =====
         public string FlavorText
         {
             get
@@ -113,9 +147,11 @@ namespace MonAtlas.ViewModels
                 return en == null ? "" : en.Text.Replace('\n', ' ').Replace('\f', ' ').Trim();
             }
         }
+
         public string EggGroupsText =>
             Species == null || Species.EggGroups.Count == 0 ? "-" :
             string.Join(", ", Species.EggGroups.Select(e => Capitalize(e.Name)));
+
         public string GenderText
         {
             get
@@ -127,10 +163,11 @@ namespace MonAtlas.ViewModels
                 return $"{male:0}% male / {female:0}% female";
             }
         }
+
         public string GrowthRateName => Species?.GrowthRate?.Name is string s && s.Length > 0 ? Capitalize(s) : "-";
         public string HabitatName => Species?.Habitat?.Name is string s && s.Length > 0 ? Capitalize(s) : "-";
 
-        // Commands
+        // ===== Commands =====
         public RelayCommand SearchCommand { get; }
         public RelayCommand ClearCommand { get; }
 
@@ -211,19 +248,20 @@ namespace MonAtlas.ViewModels
             {
                 var id = Selected?.Id ?? 0;
                 if (id <= 0) return "";
-                var shiny = Shiny;
-                return shiny
+                return Shiny
                     ? $"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/{id}.png"
                     : $"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/{id}.png";
             }
         }
 
-
         // Live preview
         public string ShowdownPreview => BuildShowdownTextForCurrent();
 
+        // ===== ctor =====
         public MainViewModel()
         {
+            _ = InitializeAsync(); // now loads dexes + pokedex list as well
+
             SearchCommand = new RelayCommand(
                 async () => await SearchAsync(),
                 () => !IsBusy && !string.IsNullOrWhiteSpace(Query));
@@ -241,6 +279,11 @@ namespace MonAtlas.ViewModels
                 Suggestions.Clear();
                 IsSuggestOpen = false;
                 Team.Clear();
+
+                // Also clear Pokédex filters/results
+                SearchText = "";
+                FilteredPokemon.Clear();
+
                 SearchCommand.RaiseCanExecuteChanged();
             });
 
@@ -273,7 +316,7 @@ namespace MonAtlas.ViewModels
                 if (Team.Count > 0) Team.RemoveAt(Team.Count - 1);
             });
 
-            // NEW: Import from clipboard
+            // Import from clipboard
             ImportShowdownFromClipboardCommand = new RelayCommand(async () =>
             {
                 try
@@ -286,11 +329,12 @@ namespace MonAtlas.ViewModels
             });
         }
 
+        // ===== Notify =====
         public event PropertyChangedEventHandler PropertyChanged;
         private void OnPropertyChanged([CallerMemberName] string name = null) =>
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 
-        // Search
+        // ===== Search (header) =====
         private async Task SearchAsync()
         {
             try
@@ -304,7 +348,136 @@ namespace MonAtlas.ViewModels
             finally { IsBusy = false; }
         }
 
-        // Autocomplete debounce
+        // ===== Unified initialization =====
+        public async Task InitializeAsync()
+        {
+            try
+            {
+                IsBusy = true;
+
+                // Load dex data (existing)
+                var progress = new Progress<string>(msg => StatusText = msg);
+                await DexLoader.LoadAllDexesAsync(progress);
+
+                // Load Pokédex versions
+                LoadDexVersions();
+
+                // Load full Pokémon index for the Pokédex tab
+                await LoadAllPokemonAsync();
+
+                // Seed filtered view immediately
+                ApplyFilters();
+            }
+            finally
+            {
+                IsBusy = false;
+                StatusText = "";
+            }
+        }
+
+        // ===== Pokédex helpers =====
+        private void LoadDexVersions()
+        {
+            DexVersions.Clear();
+
+            // Core Generations
+            DexVersions.Add(new DexVersion { Id = "national", Name = "National Dex" });
+            DexVersions.Add(new DexVersion { Id = "kanto", Name = "Kanto (Gen 1)" });
+            DexVersions.Add(new DexVersion { Id = "johto", Name = "Johto (Gen 2)" });
+            DexVersions.Add(new DexVersion { Id = "hoenn", Name = "Hoenn (Gen 3)" });
+            DexVersions.Add(new DexVersion { Id = "sinnoh", Name = "Sinnoh (Gen 4)" });
+            DexVersions.Add(new DexVersion { Id = "unova", Name = "Unova (Gen 5)" });
+            DexVersions.Add(new DexVersion { Id = "kalos", Name = "Kalos (Gen 6)" });
+            DexVersions.Add(new DexVersion { Id = "za", Name = "Pokémon Legends: Z-A (Kalos*)" });
+            DexVersions.Add(new DexVersion { Id = "alola", Name = "Alola (Gen 7)" });
+            DexVersions.Add(new DexVersion { Id = "galar", Name = "Galar (Gen 8)" });
+            DexVersions.Add(new DexVersion { Id = "hisui", Name = "Hisui (Gen 8.5)" });
+            DexVersions.Add(new DexVersion { Id = "legends_arceus", Name = "Pokémon Legends: Arceus (PLA)" });
+            DexVersions.Add(new DexVersion { Id = "paldea", Name = "Paldea (Gen 9)" });
+
+            // DLC / Side regions
+            DexVersions.Add(new DexVersion { Id = "kitakami", Name = "Kitakami (Teal Mask)" });
+            DexVersions.Add(new DexVersion { Id = "blueberry", Name = "Blueberry (Indigo Disk)" });
+
+            // Spin-off / Extended
+            DexVersions.Add(new DexVersion { Id = "go", Name = "Pokémon GO (All Released*)" });
+
+            SelectedDexVersion = DexVersions.First();
+        }
+
+        private async Task LoadAllPokemonAsync()
+        {
+            try
+            {
+                IsBusy = true;
+
+                // Wide coverage seeds: a–z + 0–9. This hits almost every name.
+                var seeds = Enumerable.Range('a', 26).Select(c => ((char)c).ToString())
+                            .Concat(Enumerable.Range(0, 10).Select(d => d.ToString()))
+                            .ToArray();
+
+                var map = new Dictionary<int, PokemonListItem>();
+                foreach (var q in seeds)
+                {
+                    try
+                    {
+                        var chunk = await _api.SearchAsync(q, 200);
+                        if (chunk == null) continue;
+                        foreach (var p in chunk) map[p.Id] = p; // de-dup by id
+                    }
+                    catch { /* ignore single seed failure */ }
+                }
+
+                _allPokemon = map.Values.OrderBy(p => p.Id).ToArray();
+            }
+            finally
+            {
+                IsBusy = false;
+            }
+        }
+
+        private void ApplyFilters()
+        {
+            var text = (SearchText ?? string.Empty).Trim().ToLowerInvariant();
+            var query = _allPokemon.AsEnumerable();
+
+            if (!string.IsNullOrEmpty(text))
+                query = query.Where(p =>
+                    (p.Name ?? string.Empty).ToLowerInvariant().Contains(text) ||
+                    p.Id.ToString().Contains(text));
+
+            if (SelectedDexVersion is { Id: not null } sel && sel.Id != "national" && sel.Id != "go")
+            {
+                (int start, int end) = sel.Id switch
+                {
+                    "kanto" => (1, 151),
+                    "johto" => (152, 251),
+                    "hoenn" => (252, 386),
+                    "sinnoh" => (387, 493),
+                    "unova" => (494, 649),
+                    "kalos" => (650, 721),
+                    "za" => (650, 721),   // Placeholder until Z-A dex confirmed
+                    "alola" => (722, 809),
+                    "galar" => (810, 898),
+                    "hisui" => (899, 905),
+                    "legends_arceus" => (899, 905),   // same range, separate label
+                    "paldea" => (906, 1025),
+                    "kitakami" => (906, 1025),
+                    "blueberry" => (906, 1025),
+                    _ => (1, int.MaxValue)
+                };
+
+                query = query.Where(p => p.Id >= start && p.Id <= end);
+            }
+
+            var results = query.Take(500).ToArray();
+            FilteredPokemon.Clear();
+            foreach (var p in results) FilteredPokemon.Add(p);
+        }
+
+
+
+        // ===== Autocomplete (header) =====
         private async Task DebounceSuggestAsync(int delayMs = 250)
         {
             _typeCts?.Cancel();
@@ -322,7 +495,17 @@ namespace MonAtlas.ViewModels
                 }
                 var list = await _api.SearchAsync(Query, limit: 20);
                 Suggestions.Clear();
-                foreach (var p in list) Suggestions.Add(p);
+
+                foreach (var p in list)
+                {
+                    var pokemonName = p.Name;
+                    var dexes = DexLoader.GetPokedexesFor(pokemonName);
+                    if (dexes.Count > 0)
+                        p.DexSummary = string.Join(" • ", dexes);
+
+                    Suggestions.Add(p);
+                }
+
                 IsSuggestOpen = Suggestions.Count > 0;
             }
             catch (TaskCanceledException) { }
@@ -392,7 +575,6 @@ namespace MonAtlas.ViewModels
         private static int Clamp(int val, int min, int max) => val < min ? min : (val > max ? max : val);
 
         // ===== Builder helpers =====
-
         private void InitBuilderFromSelected()
         {
             AvailableAbilities.Clear();
@@ -410,7 +592,7 @@ namespace MonAtlas.ViewModels
             Nature = GuessNatureFromStats();
             Level = 50;
 
-            // Defaults: 252 in best attack, 252 Spe, 4 HP
+            // Defaults
             EV_HP = 4; EV_Atk = 0; EV_SpA = 0; EV_Spe = 252; EV_Def = 0; EV_SpD = 0;
             var atk = Selected.Stats.FirstOrDefault(s => s.Stat.Name == "attack")?.BaseStat ?? 0;
             var spa = Selected.Stats.FirstOrDefault(s => s.Stat.Name == "special-attack")?.BaseStat ?? 0;
@@ -524,8 +706,7 @@ namespace MonAtlas.ViewModels
             return sb.ToString().TrimEnd();
         }
 
-        // === Evolution tab support ===
-
+        // ===== Evolution tab support =====
         private static int IdFromUrl(string url)
         {
             return int.TryParse(url.TrimEnd('/').Split('/').Last(), out var id) ? id : 0;
@@ -537,41 +718,40 @@ namespace MonAtlas.ViewModels
         }
 
         private static readonly Dictionary<string, string> MegaStoneMap = new()
-{
-    { "venusaur-mega", "Venusaurite" },
-    { "charizard-mega-x", "Charizardite X" },
-    { "charizard-mega-y", "Charizardite Y" },
-    { "blastoise-mega", "Blastoisinite" },
-    { "alakazam-mega", "Alakazite" },
-    { "gengar-mega", "Gengarite" },
-    { "kangaskhan-mega", "Kangaskhanite" },
-    { "pinsir-mega", "Pinsirite" },
-    { "gyarados-mega", "Gyaradosite" },
-    { "aerodactyl-mega", "Aerodactylite" },
-    { "ampharos-mega", "Ampharosite" },
-    { "scizor-mega", "Scizorite" },
-    { "heracross-mega", "Heracronite" },
-    { "houndoom-mega", "Houndoominite" },
-    { "tyranitar-mega", "Tyranitarite" },
-    { "blaziken-mega", "Blazikenite" },
-    { "gardevoir-mega", "Gardevoirite" },
-    { "mawile-mega", "Mawilite" },
-    { "aggron-mega", "Aggronite" },
-    { "medicham-mega", "Medichamite" },
-    { "manectric-mega", "Manectite" },
-    { "banette-mega", "Banettite" },
-    { "absol-mega", "Absolite" },
-    { "latias-mega", "Latiasite" },
-    { "latios-mega", "Latiosite" },
-    { "garchomp-mega", "Garchompite" },
-    { "lucario-mega", "Lucarionite" },
-    { "abomasnow-mega", "Abomasite" },
-    { "gallade-mega", "Galladite" },
-    { "audino-mega", "Audinite" },
-    { "diancie-mega", "Diancite" }
-};
+        {
+            { "venusaur-mega", "Venusaurite" },
+            { "charizard-mega-x", "Charizardite X" },
+            { "charizard-mega-y", "Charizardite Y" },
+            { "blastoise-mega", "Blastoisinite" },
+            { "alakazam-mega", "Alakazite" },
+            { "gengar-mega", "Gengarite" },
+            { "kangaskhan-mega", "Kangaskhanite" },
+            { "pinsir-mega", "Pinsirite" },
+            { "gyarados-mega", "Gyaradosite" },
+            { "aerodactyl-mega", "Aerodactylite" },
+            { "ampharos-mega", "Ampharosite" },
+            { "scizor-mega", "Scizorite" },
+            { "heracross-mega", "Heracronite" },
+            { "houndoom-mega", "Houndoominite" },
+            { "tyranitar-mega", "Tyranitarite" },
+            { "blaziken-mega", "Blazikenite" },
+            { "gardevoir-mega", "Gardevoirite" },
+            { "mawile-mega", "Mawilite" },
+            { "aggron-mega", "Aggronite" },
+            { "medicham-mega", "Medichamite" },
+            { "manectric-mega", "Manectite" },
+            { "banette-mega", "Banettite" },
+            { "absol-mega", "Absolite" },
+            { "latias-mega", "Latiasite" },
+            { "latios-mega", "Latiosite" },
+            { "garchomp-mega", "Garchompite" },
+            { "lucario-mega", "Lucarionite" },
+            { "abomasnow-mega", "Abomasite" },
+            { "gallade-mega", "Galladite" },
+            { "audino-mega", "Audinite" },
+            { "diancie-mega", "Diancite" }
+        };
 
-        // Build full evolution chart
         public async Task BuildEvolutionStagesAsync(string speciesUrl)
         {
             EvolutionStages.Clear();
@@ -633,7 +813,6 @@ namespace MonAtlas.ViewModels
             foreach (var s in stages) EvolutionStages.Add(s);
         }
 
-        // Recursive evolution builder
         private void BuildStagesRecursive(ChainLink node, List<EvoStageVM> dst)
         {
             if (dst.Count == 0)
@@ -751,9 +930,7 @@ namespace MonAtlas.ViewModels
             return string.Join(" ", parts.Where(p => !string.IsNullOrWhiteSpace(p)));
         }
 
-
         // ======== Showdown IMPORT ========
-
         private static readonly Dictionary<string, string> _statMap = new(StringComparer.OrdinalIgnoreCase)
         {
             {"hp","HP"},
@@ -909,5 +1086,12 @@ namespace MonAtlas.ViewModels
                 }
             }
         }
+    }
+
+    public class DexVersion
+    {
+        public string Id { get; set; } = "";
+        public string Name { get; set; } = "";
+        public override string ToString() => Name;
     }
 }
