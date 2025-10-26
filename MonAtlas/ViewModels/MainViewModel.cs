@@ -5,10 +5,12 @@ using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-using MonAtlas.Models;
 using MonAtlas.Services;
+using MonAtlas.Models;
+
 
 namespace MonAtlas.ViewModels
 {
@@ -20,10 +22,10 @@ namespace MonAtlas.ViewModels
         public ObservableCollection<PokemonListItem> Results { get; } = new();
         public ObservableCollection<CounterRow> Counters { get; } = new();
 
-        // Keep old simple chain of names if you still show it elsewhere
+        // Legacy simple chain
         public ObservableCollection<string> EvolutionChain { get; } = new();
 
-        // New rich chain for Evolution tab
+        // Rich evolution chain for the Evolution tab
         public ObservableCollection<EvoStageVM> EvolutionStages { get; } = new();
 
         public ObservableCollection<MultiTypeCounter> MultiTypeCounters { get; } = new();
@@ -137,12 +139,12 @@ namespace MonAtlas.ViewModels
         public RelayCommand AddCurrentToTeamCommand { get; }
         public RelayCommand CopyTeamShowdownCommand { get; }
         public RelayCommand RemoveLastTeamSlotCommand { get; }
+        public RelayCommand ImportShowdownFromClipboardCommand { get; }
 
         // Debounce for autocomplete
         private CancellationTokenSource _typeCts;
 
         // ===== Showdown Builder State =====
-        // Options
         public ObservableCollection<string> AvailableAbilities { get; } = new();
         public ObservableCollection<string> AvailableMoves { get; } = new();
         public static readonly string[] Natures = new[]
@@ -187,6 +189,35 @@ namespace MonAtlas.ViewModels
         public string Move2 { get => _move2; set { _move2 = value; OnPropertyChanged(); OnPropertyChanged(nameof(ShowdownPreview)); } }
         public string Move3 { get => _move3; set { _move3 = value; OnPropertyChanged(); OnPropertyChanged(nameof(ShowdownPreview)); } }
         public string Move4 { get => _move4; set { _move4 = value; OnPropertyChanged(); OnPropertyChanged(nameof(ShowdownPreview)); } }
+
+        // Shiny
+        private bool _shiny;
+        public bool Shiny
+        {
+            get => _shiny;
+            set
+            {
+                _shiny = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(ShowdownPreview));
+                OnPropertyChanged(nameof(BuilderSpriteUrl));
+            }
+        }
+
+        // === Sprite URL for Builder preview ===
+        public string BuilderSpriteUrl
+        {
+            get
+            {
+                var id = Selected?.Id ?? 0;
+                if (id <= 0) return "";
+                var shiny = Shiny;
+                return shiny
+                    ? $"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/{id}.png"
+                    : $"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/{id}.png";
+            }
+        }
+
 
         // Live preview
         public string ShowdownPreview => BuildShowdownTextForCurrent();
@@ -240,6 +271,18 @@ namespace MonAtlas.ViewModels
             RemoveLastTeamSlotCommand = new RelayCommand(() =>
             {
                 if (Team.Count > 0) Team.RemoveAt(Team.Count - 1);
+            });
+
+            // NEW: Import from clipboard
+            ImportShowdownFromClipboardCommand = new RelayCommand(async () =>
+            {
+                try
+                {
+                    var text = System.Windows.Clipboard.GetText();
+                    if (string.IsNullOrWhiteSpace(text)) return;
+                    await ImportShowdownAsync(text);
+                }
+                catch { /* ignore */ }
             });
         }
 
@@ -311,7 +354,6 @@ namespace MonAtlas.ViewModels
                     catch { }
                 }
 
-                // Build rich evolution stages for the Evolution tab using the SPECIES URL
                 if (!string.IsNullOrWhiteSpace(Selected?.Species?.Url))
                     await BuildEvolutionStagesAsync(Selected.Species.Url);
             }
@@ -368,7 +410,7 @@ namespace MonAtlas.ViewModels
             Nature = GuessNatureFromStats();
             Level = 50;
 
-            // Simple default EVs: 252 in best attack, 252 Spe, 4 HP
+            // Defaults: 252 in best attack, 252 Spe, 4 HP
             EV_HP = 4; EV_Atk = 0; EV_SpA = 0; EV_Spe = 252; EV_Def = 0; EV_SpD = 0;
             var atk = Selected.Stats.FirstOrDefault(s => s.Stat.Name == "attack")?.BaseStat ?? 0;
             var spa = Selected.Stats.FirstOrDefault(s => s.Stat.Name == "special-attack")?.BaseStat ?? 0;
@@ -381,6 +423,7 @@ namespace MonAtlas.ViewModels
             Move4 = first4.ElementAtOrDefault(3) ?? "";
             Nickname = Capitalize(Selected.Name);
             Item = "";
+            Shiny = false;
             OnPropertyChanged(nameof(ShowdownPreview));
         }
 
@@ -406,6 +449,7 @@ namespace MonAtlas.ViewModels
                 Ability = Ability,
                 Nature = Nature,
                 Level = Level,
+                Shiny = Shiny,
                 EV_HP = EV_HP,
                 EV_Atk = EV_Atk,
                 EV_Def = EV_Def,
@@ -444,6 +488,9 @@ namespace MonAtlas.ViewModels
             if (!string.IsNullOrWhiteSpace(s.Ability)) sb.AppendLine($"Ability: {Capitalize(s.Ability)}");
             if (s.Level > 0 && s.Level != 100) sb.AppendLine($"Level: {s.Level}");
 
+            // Shiny flag
+            sb.AppendLine($"Shiny: {(s.Shiny ? "Yes" : "No")}");
+
             var evParts = new[]
             {
                 s.EV_HP  > 0 ? $"{s.EV_HP} HP"   : null,
@@ -479,8 +526,6 @@ namespace MonAtlas.ViewModels
 
         // === Evolution tab support ===
 
-        // === Evolution tab support ===
-
         private static int IdFromUrl(string url)
         {
             return int.TryParse(url.TrimEnd('/').Split('/').Last(), out var id) ? id : 0;
@@ -493,95 +538,85 @@ namespace MonAtlas.ViewModels
 
         private static readonly Dictionary<string, string> MegaStoneMap = new()
 {
-            // Kanto
-            { "venusaur-mega", "Venusaurite" },
-            { "charizard-mega-x", "Charizardite X" },
-            { "charizard-mega-y", "Charizardite Y" },
-            { "blastoise-mega", "Blastoisinite" },
-            { "alakazam-mega", "Alakazite" },
-            { "gengar-mega", "Gengarite" },
-            { "kangaskhan-mega", "Kangaskhanite" },
-            { "pinsir-mega", "Pinsirite" },
-            { "gyarados-mega", "Gyaradosite" },
-            { "aerodactyl-mega", "Aerodactylite" },
+    { "venusaur-mega", "Venusaurite" },
+    { "charizard-mega-x", "Charizardite X" },
+    { "charizard-mega-y", "Charizardite Y" },
+    { "blastoise-mega", "Blastoisinite" },
+    { "alakazam-mega", "Alakazite" },
+    { "gengar-mega", "Gengarite" },
+    { "kangaskhan-mega", "Kangaskhanite" },
+    { "pinsir-mega", "Pinsirite" },
+    { "gyarados-mega", "Gyaradosite" },
+    { "aerodactyl-mega", "Aerodactylite" },
+    { "ampharos-mega", "Ampharosite" },
+    { "scizor-mega", "Scizorite" },
+    { "heracross-mega", "Heracronite" },
+    { "houndoom-mega", "Houndoominite" },
+    { "tyranitar-mega", "Tyranitarite" },
+    { "blaziken-mega", "Blazikenite" },
+    { "gardevoir-mega", "Gardevoirite" },
+    { "mawile-mega", "Mawilite" },
+    { "aggron-mega", "Aggronite" },
+    { "medicham-mega", "Medichamite" },
+    { "manectric-mega", "Manectite" },
+    { "banette-mega", "Banettite" },
+    { "absol-mega", "Absolite" },
+    { "latias-mega", "Latiasite" },
+    { "latios-mega", "Latiosite" },
+    { "garchomp-mega", "Garchompite" },
+    { "lucario-mega", "Lucarionite" },
+    { "abomasnow-mega", "Abomasite" },
+    { "gallade-mega", "Galladite" },
+    { "audino-mega", "Audinite" },
+    { "diancie-mega", "Diancite" }
+};
 
-            // Johto
-            { "ampharos-mega", "Ampharosite" },
-            { "scizor-mega", "Scizorite" },
-            { "heracross-mega", "Heracronite" },
-            { "houndoom-mega", "Houndoominite" },
-            { "tyranitar-mega", "Tyranitarite" },
-
-            // Hoenn
-            { "blaziken-mega", "Blazikenite" },
-            { "gardevoir-mega", "Gardevoirite" },
-            { "mawile-mega", "Mawilite" },
-            { "aggron-mega", "Aggronite" },
-            { "medicham-mega", "Medichamite" },
-            { "manectric-mega", "Manectite" },
-            { "banette-mega", "Banettite" },
-            { "absol-mega", "Absolite" },
-            { "latias-mega", "Latiasite" },
-            { "latios-mega", "Latiosite" },
-
-            // Sinnoh
-            { "garchomp-mega", "Garchompite" },
-            { "lucario-mega", "Lucarionite" },
-            { "abomasnow-mega", "Abomasite" },
-            { "gallade-mega", "Galladite" },
-
-            // Unova
-            { "audino-mega", "Audinite" },
-
-            // Kalos
-            { "diancie-mega", "Diancite" }
-        };
-
-        // NOTE: use species URL (works for megas/forms too)
-        // Call with: await BuildEvolutionStagesAsync(Selected?.Species?.Url);
+        // Build full evolution chart
         public async Task BuildEvolutionStagesAsync(string speciesUrl)
         {
             EvolutionStages.Clear();
             if (string.IsNullOrWhiteSpace(speciesUrl)) return;
 
-            // 1) Species -> evolution chain URL
             var species = await _api.GetSpeciesByUrlAsync(speciesUrl);
             if (species?.EvolutionChain?.Url == null) return;
 
-            // 2) Download full chain
             var chainRes = await _api.GetEvolutionChainByUrlAsync(species.EvolutionChain.Url);
             if (chainRes?.Chain == null) return;
 
-            // 3) Build columns from root
             var stages = new List<EvoStageVM>();
             BuildStagesRecursive(chainRes.Chain, stages);
 
-            // 4) Append Mega/G-Max column if varieties have them (and label properly)
+            // Append Mega/G-Max forms as rightmost column with per-form labels
             try
             {
                 var specialForms = species.Varieties
                     .Where(v => v?.Pokemon?.Name != null &&
-                                (v.Pokemon.Name.Contains("mega") || v.Pokemon.Name.Contains("gmax")))
+                                (v.Pokemon.Name.Contains("mega", StringComparison.OrdinalIgnoreCase) ||
+                                 v.Pokemon.Name.Contains("gmax", StringComparison.OrdinalIgnoreCase)))
+                    .Select(v => v.Pokemon)
+                    .OrderBy(p => p.Name)
                     .ToList();
 
-                if (specialForms.Count > 0 && stages.Count > 0)
+                if (specialForms.Count > 0)
                 {
                     var megaStage = new EvoStageVM();
 
-                    foreach (var v in specialForms)
+                    foreach (var form in specialForms)
                     {
-                        var cid = IdFromUrl(v.Pokemon.Url);
+                        var cid = IdFromUrl(form.Url);
+                        var key = form.Name.ToLowerInvariant();
+
+                        string label =
+                            MegaStoneMap.TryGetValue(key, out var stone) ? stone :
+                            key.Contains("gmax") ? "Max Soup" :
+                            Nice(form.Name);
+
                         megaStage.Forms.Add(new EvoFormVM
                         {
-                            Name = v.Pokemon.Name,
-                            SpriteUrl = SpriteUrlForId(cid)
+                            Name = form.Name,
+                            SpriteUrl = SpriteUrlForId(cid),
+                            ConnectorLabel = label
                         });
-
-                        var key = v.Pokemon.Name.ToLowerInvariant();
-                        if (MegaStoneMap.TryGetValue(key, out var stone))
-                            megaStage.ConnectorTexts.Add(stone);
-                        else
-                            megaStage.ConnectorTexts.Add(v.Pokemon.Name.Contains("gmax") ? "G-Max" : "Mega Stone");
                     }
 
                     stages.Add(megaStage);
@@ -589,33 +624,28 @@ namespace MonAtlas.ViewModels
             }
             catch
             {
-                // varieties not available or different schema; skip megas
+                // ignore schema differences
             }
 
-            // 5) Flag last column
             for (int i = 0; i < stages.Count; i++)
                 stages[i].IsLast = (i == stages.Count - 1);
 
-            EvolutionStages.Clear();
             foreach (var s in stages) EvolutionStages.Add(s);
         }
 
-        // Recursively build columns. For branching nodes we:
-        // - Put all children in one next column (multiple Forms).
-        // - Compute a connector label for each child separately (ConnectorTexts aligns with Forms).
+        // Recursive evolution builder
         private void BuildStagesRecursive(ChainLink node, List<EvoStageVM> dst)
         {
             if (dst.Count == 0)
             {
-                // Root column (single form)
                 var rootId = IdFromUrl(node.Species.Url);
-                dst.Add(new EvoStageVM
+                var rootStage = new EvoStageVM();
+                rootStage.Forms.Add(new EvoFormVM
                 {
-                    Forms = new List<EvoFormVM>
-            {
-                new EvoFormVM { Name = node.Species.Name, SpriteUrl = SpriteUrlForId(rootId) }
-            }
+                    Name = node.Species.Name,
+                    SpriteUrl = SpriteUrlForId(rootId)
                 });
+                dst.Add(rootStage);
             }
 
             if (node.EvolvesTo == null || node.EvolvesTo.Count == 0)
@@ -623,35 +653,28 @@ namespace MonAtlas.ViewModels
 
             var next = new EvoStageVM();
 
-            // Each child becomes a form tile in the same next column.
-            // We also compute each child's connector label independently.
             foreach (var child in node.EvolvesTo)
             {
                 var cid = IdFromUrl(child.Species.Url);
-                next.Forms.Add(new EvoFormVM
-                {
-                    Name = child.Species.Name,
-                    SpriteUrl = SpriteUrlForId(cid)
-                });
-
                 var label = (child.EvolutionDetails != null && child.EvolutionDetails.Count > 0)
                     ? BuildConnectorText(child.EvolutionDetails)
                     : "";
 
-                next.ConnectorTexts.Add(label);
+                next.Forms.Add(new EvoFormVM
+                {
+                    Name = child.Species.Name,
+                    SpriteUrl = SpriteUrlForId(cid),
+                    ConnectorLabel = label
+                });
             }
 
             dst.Add(next);
-
-            // Continue down the first branch to keep the main line going.
-            // (If you ever want to render "true tree" depth, iterate all children here.)
             BuildStagesRecursive(node.EvolvesTo[0], dst);
         }
 
         private static string Nice(string? raw)
         {
             if (string.IsNullOrWhiteSpace(raw)) return "";
-            // "water-stone" -> "Water Stone"
             var s = raw.Replace('-', ' ');
             return char.ToUpper(s[0]) + s.Substring(1);
         }
@@ -660,15 +683,13 @@ namespace MonAtlas.ViewModels
         {
             if (details == null) return "";
 
-            // Use the first detail (most evolutions have a single entry; if many exist, pick the one
-            // with the clearest signal: item > level > trade > trigger)
             EvolutionDetail? best = null;
             int bestScore = int.MinValue;
 
             foreach (var d in details)
             {
                 int score = 0;
-                if (!string.IsNullOrWhiteSpace(d.Item?.Name)) score += 100;      // prefer stones / use-item
+                if (!string.IsNullOrWhiteSpace(d.Item?.Name)) score += 100;
                 if (d.MinLevel.HasValue) score += 80;
                 if (!string.IsNullOrWhiteSpace(d.TradeSpecies?.Name)) score += 60;
                 if (!string.IsNullOrWhiteSpace(d.Trigger?.Name)) score += 20;
@@ -681,32 +702,17 @@ namespace MonAtlas.ViewModels
 
             var parts = new List<string>();
 
-            // 1) Use-item (stones, etc.)
             if (!string.IsNullOrWhiteSpace(best.Item?.Name))
-            {
-                parts.Add(Nice(best.Item!.Name)); // "Leaf Stone", "Water Stone", "Dawn Stone", etc.
-            }
-            // 2) Level
+                parts.Add(Nice(best.Item.Name));
             else if (best.MinLevel.HasValue)
-            {
                 parts.Add("Lv " + best.MinLevel.Value);
-            }
-            // 3) Trade variants
             else if (!string.IsNullOrWhiteSpace(best.TradeSpecies?.Name))
-            {
                 parts.Add("Trade for " + Nice(best.TradeSpecies.Name));
-            }
             else if (string.Equals(best.Trigger?.Name, "trade", StringComparison.OrdinalIgnoreCase))
-            {
                 parts.Add("Trade");
-            }
             else if (!string.IsNullOrWhiteSpace(best.Trigger?.Name))
-            {
-                // fallback for other triggers (e.g., "level-up", "use-item")
                 parts.Add(Nice(best.Trigger!.Name));
-            }
 
-            // Contextual extras (time, location, known move type, happiness, etc.)
             if (!string.IsNullOrWhiteSpace(best.TimeOfDay))
                 parts.Add("(" + Nice(best.TimeOfDay) + ")");
 
@@ -733,9 +739,7 @@ namespace MonAtlas.ViewModels
 
             if (best.RelativePhysicalStats.HasValue)
             {
-                // -1: Atk < Def, 0: Atk = Def, 1: Atk > Def
-                var rps = best.RelativePhysicalStats.Value;
-                parts.Add(rps switch
+                parts.Add(best.RelativePhysicalStats.Value switch
                 {
                     -1 => "Atk < Def",
                     0 => "Atk = Def",
@@ -746,31 +750,164 @@ namespace MonAtlas.ViewModels
 
             return string.Join(" ", parts.Where(p => !string.IsNullOrWhiteSpace(p)));
         }
-    }
 
-    public class CounterRow
-    {
-        public string AttackingType { get; set; } = "";
-        public double Multiplier { get; set; }
-        public string Label => $"{AttackingType.ToUpper()}  x{Multiplier:0.##}";
-    }
 
-    // One Showdown set
-    public class TeamSlot
-    {
-        public string Species { get; set; } = "";
-        public string Nickname { get; set; } = "";
-        public string Item { get; set; } = "";
-        public string Ability { get; set; } = "";
-        public string Nature { get; set; } = "Adamant";
-        public int Level { get; set; } = 50;
+        // ======== Showdown IMPORT ========
 
-        public int EV_HP, EV_Atk, EV_Def, EV_SpA, EV_SpD, EV_Spe;
-        public int IV_HP = 31, IV_Atk = 31, IV_Def = 31, IV_SpA = 31, IV_SpD = 31, IV_Spe = 31;
+        private static readonly Dictionary<string, string> _statMap = new(StringComparer.OrdinalIgnoreCase)
+        {
+            {"hp","HP"},
+            {"atk","Atk"},
+            {"def","Def"},
+            {"spa","SpA"}, {"spatk","SpA"}, {"sp.atk","SpA"},
+            {"spd","SpD"}, {"spdef","SpD"}, {"sp.def","SpD"},
+            {"spe","Spe"}, {"speed","Spe"}
+        };
 
-        public string Move1 { get; set; } = "";
-        public string Move2 { get; set; } = "";
-        public string Move3 { get; set; } = "";
-        public string Move4 { get; set; } = "";
+        private static int ParseInt(string s) => int.TryParse(s, out var v) ? v : 0;
+
+        public async Task ImportShowdownAsync(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return;
+
+            var lines = text.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n')
+                            .Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
+
+            string? species = null, nickname = null, item = "";
+            string ability = "", nature = "";
+            int level = 50;
+            bool shiny = false;
+            int? ev_hp = null, ev_atk = null, ev_def = null, ev_spa = null, ev_spd = null, ev_spe = null;
+            int? iv_hp = null, iv_atk = null, iv_def = null, iv_spa = null, iv_spd = null, iv_spe = null;
+            var moves = new List<string>();
+
+            string NiceName(string s) => s?.Trim() ?? "";
+
+            void ParseEVIVLine(string line, bool isEV)
+            {
+                var m = Regex.Match(line, @"^(EVs|IVs)\s*:\s*(.+)$", RegexOptions.IgnoreCase);
+                if (!m.Success) return;
+                var rhs = m.Groups[2].Value;
+                foreach (var part in rhs.Split('/').Select(p => p.Trim()))
+                {
+                    var mm = Regex.Match(part, @"(?<val>\d+)\s+(?<stat>.+)$");
+                    if (!mm.Success) continue;
+                    var val = ParseInt(mm.Groups["val"].Value);
+                    var statRaw = mm.Groups["stat"].Value
+                        .Replace(".", "", StringComparison.Ordinal)
+                        .Replace("-", "", StringComparison.Ordinal)
+                        .Replace(" ", "", StringComparison.Ordinal);
+                    if (!_statMap.TryGetValue(statRaw, out var key)) continue;
+
+                    if (isEV)
+                    {
+                        switch (key)
+                        {
+                            case "HP": ev_hp = val; break;
+                            case "Atk": ev_atk = val; break;
+                            case "Def": ev_def = val; break;
+                            case "SpA": ev_spa = val; break;
+                            case "SpD": ev_spd = val; break;
+                            case "Spe": ev_spe = val; break;
+                        }
+                    }
+                    else
+                    {
+                        switch (key)
+                        {
+                            case "HP": iv_hp = val; break;
+                            case "Atk": iv_atk = val; break;
+                            case "Def": iv_def = val; break;
+                            case "SpA": iv_spa = val; break;
+                            case "SpD": iv_spd = val; break;
+                            case "Spe": iv_spe = val; break;
+                        }
+                    }
+                }
+            }
+
+            // Header: "Nickname (Species) @ Item" or "Species @ Item" or "Species"
+            var header = lines.FirstOrDefault();
+            if (!string.IsNullOrEmpty(header))
+            {
+                var atParts = header.Split(new[] { " @ " }, StringSplitOptions.None);
+                var left = atParts[0].Trim();
+                if (atParts.Length > 1) item = atParts[1].Trim();
+
+                var m = Regex.Match(left, @"^(?<nick>.+?)\s*\((?<species>[^)]+)\)$");
+                if (m.Success)
+                {
+                    nickname = NiceName(m.Groups["nick"].Value);
+                    species = NiceName(m.Groups["species"].Value);
+                }
+                else
+                {
+                    species = NiceName(left);
+                }
+            }
+
+            foreach (var line in lines.Skip(1))
+            {
+                if (line.StartsWith("Ability:", StringComparison.OrdinalIgnoreCase))
+                    ability = NiceName(line[(line.IndexOf(':') + 1)..]);
+                else if (line.StartsWith("Level:", StringComparison.OrdinalIgnoreCase))
+                    level = ParseInt(line[(line.IndexOf(':') + 1)..]);
+                else if (line.StartsWith("Shiny:", StringComparison.OrdinalIgnoreCase))
+                    shiny = line.IndexOf("yes", StringComparison.OrdinalIgnoreCase) >= 0;
+                else if (line.StartsWith("EVs:", StringComparison.OrdinalIgnoreCase))
+                    ParseEVIVLine(line, isEV: true);
+                else if (line.StartsWith("IVs:", StringComparison.OrdinalIgnoreCase))
+                    ParseEVIVLine(line, isEV: false);
+                else if (Regex.IsMatch(line, @"\bNature\b", RegexOptions.IgnoreCase))
+                    nature = NiceName(line.Replace("Nature", "", StringComparison.OrdinalIgnoreCase).Trim());
+                else if (line.StartsWith("-", StringComparison.Ordinal))
+                {
+                    var move = line.TrimStart('-', ' ').Trim();
+                    if (move.Length > 0) moves.Add(move);
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(species))
+            {
+                try
+                {
+                    var mon = await _api.GetPokemonAsync(species.ToLowerInvariant());
+                    Selected = mon;
+
+                    Nickname = string.IsNullOrWhiteSpace(nickname) ? Capitalize(Selected.Name) : nickname;
+                    Item = item ?? "";
+                    Ability = !string.IsNullOrWhiteSpace(ability) ? ability : Ability;
+                    Nature = !string.IsNullOrWhiteSpace(nature) ? nature : Nature;
+                    Level = level > 0 ? level : Level;
+                    Shiny = shiny;
+
+                    if (ev_hp.HasValue) EV_HP = ev_hp.Value;
+                    if (ev_atk.HasValue) EV_Atk = ev_atk.Value;
+                    if (ev_def.HasValue) EV_Def = ev_def.Value;
+                    if (ev_spa.HasValue) EV_SpA = ev_spa.Value;
+                    if (ev_spd.HasValue) EV_SpD = ev_spd.Value;
+                    if (ev_spe.HasValue) EV_Spe = ev_spe.Value;
+
+                    if (iv_hp.HasValue) IV_HP = iv_hp.Value;
+                    if (iv_atk.HasValue) IV_Atk = iv_atk.Value;
+                    if (iv_def.HasValue) IV_Def = iv_def.Value;
+                    if (iv_spa.HasValue) IV_SpA = iv_spa.Value;
+                    if (iv_spd.HasValue) IV_SpD = iv_spd.Value;
+                    if (iv_spe.HasValue) IV_Spe = iv_spe.Value;
+
+                    var mvs = moves.Take(4).ToList();
+                    Move1 = mvs.ElementAtOrDefault(0) ?? "";
+                    Move2 = mvs.ElementAtOrDefault(1) ?? "";
+                    Move3 = mvs.ElementAtOrDefault(2) ?? "";
+                    Move4 = mvs.ElementAtOrDefault(3) ?? "";
+
+                    OnPropertyChanged(nameof(ShowdownPreview));
+                }
+                catch
+                {
+                    // species not found or API error – ignore
+                }
+            }
+        }
     }
 }

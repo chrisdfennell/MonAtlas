@@ -1,25 +1,14 @@
-﻿using System.Collections.Generic;
+﻿using System.Collections.ObjectModel;
 
 namespace MonAtlas.Models
 {
-    // Represents a stage in the evolution chain (like Charmander → Charmeleon → Charizard)
     public sealed class EvoStageVM
     {
-        public List<EvoFormVM> Forms { get; set; } = new();
+        // Column of forms (1+ rows if branching)
+        public ObservableCollection<EvoFormVM> Forms { get; } = new();
 
-        // one label per form (aligned by index)
-        public List<string> ConnectorTexts { get; set; } = new();
-
-        // backward-compat for XAML that still binds to ConnectorText (single value)
-        public string ConnectorText
-        {
-            get => ConnectorTexts.FirstOrDefault() ?? "";
-            set
-            {
-                ConnectorTexts.Clear();
-                if (!string.IsNullOrWhiteSpace(value)) ConnectorTexts.Add(value);
-            }
-        }
+        // Legacy: labels aligned to the whole column (no longer used by the centered UI, but safe to keep)
+        public ObservableCollection<string> ConnectorTexts { get; } = new();
 
         public bool IsLast { get; set; }
     }
@@ -28,5 +17,8 @@ namespace MonAtlas.Models
     {
         public string Name { get; set; } = "";
         public string SpriteUrl { get; set; } = "";
+
+        // NEW: label for the edge leading into THIS form (used to center the chip next to this row)
+        public string? ConnectorLabel { get; set; }
     }
 }

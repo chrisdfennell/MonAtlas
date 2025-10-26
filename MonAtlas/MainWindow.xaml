@@ -8,8 +8,8 @@
         xmlns:sys="clr-namespace:System;assembly=mscorlib"
         mc:Ignorable="d"
         Title="MonAtlas"
-        Height="900"
-        Width="1200"
+        Height="956"
+        Width="1607"
         Background="{StaticResource BgBrush}">
 
     <!-- ================= RESOURCES ================= -->
@@ -29,6 +29,7 @@
             <Setter Property="Padding" Value="16"/>
             <Setter Property="Width" Value="280"/>
             <Setter Property="Margin" Value="12,0"/>
+            <Setter Property="VerticalAlignment" Value="Top"/>
         </Style>
 
         <Style x:Key="EvoSprite" TargetType="Image">
@@ -171,7 +172,10 @@
                    StaysOpen="False"
                    AllowsTransparency="True"
                    IsOpen="{Binding IsSuggestOpen}">
-                <Border Background="#1E2444" BorderBrush="#2C3256" BorderThickness="1" CornerRadius="8">
+                <Border Background="#1E2444"
+                        BorderBrush="#2C3256"
+                        BorderThickness="1"
+                        CornerRadius="8">
                     <ListBox x:Name="SuggestList"
                              Width="{Binding ElementName=SearchBox, Path=ActualWidth}"
                              MaxHeight="260"
@@ -179,14 +183,19 @@
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <DockPanel Margin="6">
-                                    <Image Width="32" Height="32" Margin="0,0,8,0" Source="{Binding SpriteUrl}"/>
-                                    <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center"/>
+                                    <Image Width="32"
+                                           Height="32"
+                                           Margin="0,0,8,0"
+                                           Source="{Binding SpriteUrl}" />
+                                    <TextBlock Text="{Binding DisplayName}"
+                                   VerticalAlignment="Center" />
                                 </DockPanel>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
                 </Border>
             </Popup>
+
         </DockPanel>
 
         <!-- Content -->
@@ -197,37 +206,55 @@
             </Grid.ColumnDefinitions>
 
             <!-- Results List -->
-            <Border Style="{StaticResource Card}" Grid.Column="0" Margin="0,0,16,0">
-                <StackPanel>
-                    <TextBlock FontSize="18" FontWeight="Bold" Text="Results"/>
-                    <ListBox x:Name="ResultsList"
-                             ItemsSource="{Binding Results}"
-                             Background="{x:Null}"
-                             SelectionMode="Single"
-                             MouseDoubleClick="ResultsList_MouseDoubleClick"
-                             KeyDown="ResultsList_KeyDown"
-                             SelectionChanged="ResultsList_SelectionChanged">
-                        <ListBox.ItemContainerStyle>
-                            <Style TargetType="ListBoxItem">
-                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-                                <Setter Property="Cursor" Value="Hand"/>
-                            </Style>
-                        </ListBox.ItemContainerStyle>
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <Border Margin="4" Padding="8" Background="#1E2444" CornerRadius="8">
-                                    <DockPanel>
-                                        <Image Width="56" Height="56" Margin="0,0,8,0" Source="{Binding SpriteUrl}"/>
-                                        <StackPanel>
-                                            <TextBlock FontWeight="Bold" Text="{Binding DisplayName}"/>
-                                            <TextBlock Foreground="#9FB0FF" FontSize="12" Text="{Binding Url}"/>
-                                        </StackPanel>
-                                    </DockPanel>
-                                </Border>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                </StackPanel>
+            <Border Style="{StaticResource Card}"
+                    Grid.Column="0"
+                    Margin="0,0,16,0">
+                <DockPanel LastChildFill="True">
+                    <TextBlock FontSize="18"
+                               FontWeight="Bold"
+                               Text="Results"
+                               Margin="0,0,0,8"
+                               DockPanel.Dock="Top"/>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+                        <ListBox x:Name="ResultsList"
+                                 ItemsSource="{Binding Results}"
+                                 Background="{x:Null}"
+                                 SelectionMode="Single"
+                                 MouseDoubleClick="ResultsList_MouseDoubleClick"
+                                 KeyDown="ResultsList_KeyDown"
+                                 SelectionChanged="ResultsList_SelectionChanged">
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                    <Setter Property="Cursor" Value="Hand"/>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Margin="4"
+                                            Padding="8"
+                                            Background="#1E2444"
+                                            CornerRadius="8">
+                                        <DockPanel>
+                                            <Image Width="56"
+                                                   Height="56"
+                                                   Margin="0,0,8,0"
+                                                   Source="{Binding SpriteUrl}"/>
+                                            <StackPanel>
+                                                <TextBlock FontWeight="Bold"
+                                               Text="{Binding DisplayName}"/>
+                                                <TextBlock Foreground="#9FB0FF"
+                                               FontSize="12"
+                                               Text="{Binding Url}"/>
+                                            </StackPanel>
+                                        </DockPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </ScrollViewer>
+                </DockPanel>
             </Border>
 
             <!-- Tabs wrapped in enhanced border -->
@@ -235,7 +262,9 @@
                 <TabControl>
                     <!-- Overview Tab -->
                     <TabItem Header="Overview">
-                        <ScrollViewer Background="{StaticResource BgBrush}">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      Background="{StaticResource BgBrush}">
                             <StackPanel>
 
                                 <!-- Header -->
@@ -355,7 +384,9 @@
 
                     <!-- Counters Tab -->
                     <TabItem Header="Counters">
-                        <ScrollViewer Background="{StaticResource BgBrush}">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      Background="{StaticResource BgBrush}">
                             <StackPanel>
                                 <TextBlock Margin="0,12,0,4" FontSize="18" FontWeight="Bold" Text="Counter Advisor (Types)"/>
                                 <Border Background="#1E2444" CornerRadius="10" Padding="10">
@@ -409,19 +440,27 @@
                     </TabItem>
 
                     <TabItem Header="Evolution">
-                        <ScrollViewer Background="{StaticResource BgBrush}" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
-                            <!-- Horizontal flow of stages -->
-                            <ItemsControl ItemsSource="{Binding EvolutionStages}">
+                        <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                                      VerticalScrollBarVisibility="Auto"
+                                      Background="{StaticResource BgBrush}">
+                            <ItemsControl ItemsSource="{Binding EvolutionStages}"
+                                          VerticalAlignment="Top">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
                                         <StackPanel Orientation="Horizontal"/>
                                     </ItemsPanelTemplate>
                                 </ItemsControl.ItemsPanel>
 
+                                <!-- NEW: keep each item content-sized -->
+                                <ItemsControl.ItemContainerStyle>
+                                    <Style TargetType="ContentPresenter">
+                                        <Setter Property="VerticalAlignment" Value="Top"/>
+                                    </Style>
+                                </ItemsControl.ItemContainerStyle>
+
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <!-- One stage + (optional) connector to the next -->
-                                        <Grid>
+                                        <Grid VerticalAlignment="Top">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="Auto"/>
                                                 <ColumnDefinition Width="Auto"/>
@@ -439,23 +478,55 @@
 
                                                     <ItemsControl.ItemTemplate>
                                                         <DataTemplate>
-                                                            <Border Background="#1E2444" CornerRadius="20" Padding="12" Margin="0,8,0,8">
-                                                                <StackPanel>
+                                                            <Grid Margin="0,6">
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="Auto"/>
+                                                                    <ColumnDefinition Width="12"/>
+                                                                    <ColumnDefinition Width="Auto"/>
+                                                                </Grid.ColumnDefinitions>
+
+                                                                <!-- Picture & name -->
+                                                                <StackPanel Grid.Column="0" HorizontalAlignment="Center">
                                                                     <Image Source="{Binding SpriteUrl}" Style="{StaticResource EvoSprite}"/>
                                                                     <TextBlock Text="{Binding Name}" Style="{StaticResource EvoName}"/>
                                                                 </StackPanel>
-                                                            </Border>
+
+                                                                <!-- Centered connector chip (one per row) -->
+                                                                <!-- Centered connector chip (one per row) -->
+                                                                <Border Grid.Column="2"
+                                                                        VerticalAlignment="Center">
+                                                                    <Border.Style>
+                                                                        <Style TargetType="Border" BasedOn="{StaticResource EvoConnectorChip}">
+                                                                            <Setter Property="Visibility" Value="Visible" />
+                                                                            <Style.Triggers>
+                                                                                <DataTrigger Binding="{Binding ConnectorLabel}" Value="{x:Null}">
+                                                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                                                </DataTrigger>
+                                                                                <DataTrigger Binding="{Binding ConnectorLabel}" Value="">
+                                                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                                                </DataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </Border.Style>
+                                                                    <TextBlock Text="{Binding ConnectorLabel}"
+                                                                               Foreground="White"
+                                                                               FontWeight="SemiBold"/>
+                                                                </Border>
+
+                                                            </Grid>
                                                         </DataTemplate>
                                                     </ItemsControl.ItemTemplate>
                                                 </ItemsControl>
+
                                             </Border>
 
-                                            <StackPanel Grid.Column="1"
-                                                        Orientation="Horizontal"
-                                                        VerticalAlignment="Center"
-                                                        Margin="10,0,10,0">
-                                                <StackPanel.Style>
-                                                    <Style TargetType="StackPanel">
+                                            <!-- Connectors list (right of the stage) -->
+                                            <ItemsControl Grid.Column="1"
+                                                          Margin="10,0,10,0"
+                                                          ItemsSource="{Binding ConnectorTexts}">
+                                                <!-- keep hidden on last column -->
+                                                <ItemsControl.Style>
+                                                    <Style TargetType="ItemsControl">
                                                         <Setter Property="Visibility" Value="Visible"/>
                                                         <Style.Triggers>
                                                             <DataTrigger Binding="{Binding IsLast}" Value="True">
@@ -463,23 +534,27 @@
                                                             </DataTrigger>
                                                         </Style.Triggers>
                                                     </Style>
-                                                </StackPanel.Style>
+                                                </ItemsControl.Style>
 
-                                                <!-- Arrow icon -->
-                                                <Path Data="M0,0 L10,5 L0,10 Z"
-                                                      Fill="White"
-                                                      Stretch="Uniform"
-                                                      Width="16" Height="16"
-                                                      Margin="10,0"/>
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <StackPanel Orientation="Vertical" VerticalAlignment="Center"/>
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
 
-                                                <!-- Condition chip -->
-                                                <Border Style="{StaticResource EvoConnectorChip}">
-                                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                        <TextBlock Text="{Binding ConnectorText}" Foreground="White" FontWeight="SemiBold"/>
-                                                    </StackPanel>
-                                                </Border>
-                                            </StackPanel>
-
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <StackPanel Orientation="Horizontal" Margin="0,12">
+                                                            <Path Data="M0,0 L10,5 L0,10 Z"
+                                                                  Fill="White" Stretch="Uniform"
+                                                                  Width="16" Height="16" Margin="10,0"/>
+                                                            <Border Style="{StaticResource EvoConnectorChip}">
+                                                                <TextBlock Text="{Binding}" Foreground="White" FontWeight="SemiBold"/>
+                                                            </Border>
+                                                        </StackPanel>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
                                         </Grid>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
@@ -489,25 +564,72 @@
 
                     <!-- Moves Tab -->
                     <TabItem Header="Moves">
-                        <ScrollViewer Background="{StaticResource BgBrush}">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      Background="{StaticResource BgBrush}">
                             <StackPanel>
-                                <TextBlock Margin="0,12,0,6" FontSize="18" FontWeight="Bold" Text="Learnset (names)"/>
-                                <ListBox ItemsSource="{Binding Selected.Moves}">
-                                    <ListBox.ItemTemplate>
+                                <TextBlock Margin="0,12,0,6"
+                       FontSize="18"
+                       FontWeight="Bold"
+                       Text="Learnset (names)"/>
+
+                                <!-- Two equal columns with vertical scrolling -->
+                                <ItemsControl ItemsSource="{Binding Selected.Moves}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <UniformGrid Columns="2"/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+
+                                    <ItemsControl.ItemTemplate>
                                         <DataTemplate>
-                                            <TextBlock Text="{Binding Move.Name}" />
+                                            <Border Background="#1E2444"
+                                                    CornerRadius="10"
+                                                    Padding="8"
+                                                    Margin="6">
+                                                <TextBlock Text="{Binding Move.Name}"
+                                       TextTrimming="CharacterEllipsis"/>
+                                            </Border>
                                         </DataTemplate>
-                                    </ListBox.ItemTemplate>
-                                </ListBox>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
                             </StackPanel>
                         </ScrollViewer>
                     </TabItem>
 
                     <!-- Builder Tab -->
                     <TabItem Header="Builder">
-                        <ScrollViewer Background="{StaticResource BgBrush}">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      Background="{StaticResource BgBrush}">
                             <StackPanel>
-                                <TextBlock Margin="0,12,0,6" FontSize="18" FontWeight="Bold" Text="Team Builder (Showdown Export)"/>
+
+                                <TextBlock Margin="0,12,0,6"
+                                           FontSize="18"
+                                           FontWeight="Bold"
+                                           Text="Team Builder (Showdown Export)"/>
+
+                                <!-- PREVIEW ROW (moved inside the tab) -->
+                                <StackPanel Orientation="Horizontal"
+                                            Margin="0,6,0,12"
+                                            VerticalAlignment="Center">
+                                    <Image Width="96"
+                                           Height="96"
+                                           Margin="0,0,12,0"
+                                           Source="{Binding BuilderSpriteUrl}"
+                                           Stretch="Uniform"
+                                           SnapsToDevicePixels="True"
+                                           RenderOptions.BitmapScalingMode="Fant"/>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock FontWeight="Bold"
+                                                   FontSize="16"
+                                                   Text="{Binding Selected.DisplayName}"/>
+                                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                            <CheckBox IsChecked="{Binding Shiny}" VerticalAlignment="Center"/>
+                                            <TextBlock Text=" Shiny" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </StackPanel>
 
                                 <!-- Quick fields row -->
                                 <Grid Margin="0,4,0,8">
@@ -647,14 +769,18 @@
 
                                 <!-- Actions + preview -->
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                    <Button Content="Copy Current Set" Command="{Binding CopyCurrentShowdownCommand}" />
+                                    <Button Content="Import from Clipboard" Command="{Binding ImportShowdownFromClipboardCommand}" />
+                                    <Button Content="Copy Current Set" Margin="8,0,0,0" Command="{Binding CopyCurrentShowdownCommand}" />
                                     <Button Content="Add To Team" Margin="8,0,0,0" Command="{Binding AddCurrentToTeamCommand}" />
                                     <Button Content="Copy Full Team" Margin="8,0,0,0" Command="{Binding CopyTeamShowdownCommand}" />
                                     <Button Content="Remove Last Slot" Margin="8,0,0,0" Command="{Binding RemoveLastTeamSlotCommand}" />
                                 </StackPanel>
 
+                                <!-- bigger export box (keep your size) -->
                                 <TextBox Text="{Binding ShowdownPreview, Mode=OneWay}"
-                                         IsReadOnly="True" AcceptsReturn="True" Height="140" />
+                                         IsReadOnly="True"
+                                         AcceptsReturn="True"
+                                         Height="220" />
                             </StackPanel>
                         </ScrollViewer>
                     </TabItem>
